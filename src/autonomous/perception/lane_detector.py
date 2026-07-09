@@ -264,8 +264,8 @@ class LaneDetector:
         overlay = frame.copy()
 
         if left_curve is not None:
-            cv2.polylines(overlay, [left_curve], isClosed=False, color=(0, 255, 0), thickness=5)
+            cv2.polylines(overlay, [left_curve], isClosed=False, color=(0, 255, 0), thickness=3)
         if right_curve is not None:
-            cv2.polylines(overlay, [right_curve], isClosed=False, color=(0, 255, 0), thickness=5)
+            cv2.polylines(overlay, [right_curve], isClosed=False, color=(0, 255, 0), thickness=3)
 
-        return overlay
+        return cv2.addWeighted(overlay, 0.6, frame, 0.4, 0)

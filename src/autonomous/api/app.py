@@ -101,20 +101,22 @@ active_source: str | int = _default_source()
 def create_app() -> Flask:
     app = Flask(__name__)
 
-    overview_template = """
+    overview_template = r"""
     <!doctype html>
     <html lang="en">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <title>Perception Intelligence for Autonomous Vehicles using Monocular Vision and Deep Learning</title>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
       <style>
         :root {
           font-size: 12px;
           color-scheme: light;
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           --orange: #ff8c00;
-          --orange-light: #ffa500;
+          --orange-glow: rgba(255,140,0,0.4);
+          --dark: #0a0a0a;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -122,11 +124,265 @@ def create_app() -> Flask:
           color: #1a1a1a;
           background: #ffffff;
           line-height: 1.7;
+          overflow-x: hidden;
         }
+
+        /* ======================== */
+        /* BOOT-UP SEQUENCE OVERLAY */
+        /* ======================== */
+        #boot-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          background: #000;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          transition: opacity 0.4s ease;
+        }
+        #boot-overlay.done {
+          opacity: 0;
+          pointer-events: none;
+        }
+        #boot-reticle {
+          width: 120px;
+          height: 120px;
+          border: 2px solid var(--orange);
+          border-radius: 50%;
+          position: relative;
+          margin-bottom: 30px;
+        }
+        #boot-reticle::before {
+          content: '';
+          position: absolute;
+          inset: -10px;
+          border: 1px dashed rgba(255,140,0,0.5);
+          border-radius: 50%;
+          animation: reticleSpin 2s linear infinite;
+        }
+        #boot-reticle::after {
+          content: '';
+          position: absolute;
+          top: 50%; left: 50%;
+          width: 0; height: 0;
+          background: var(--orange);
+          border-radius: 50%;
+          transform: translate(-50%,-50%);
+          animation: reticlePulse 0.8s ease-in-out infinite alternate;
+        }
+        #boot-reticle .crosshair {
+          position: absolute;
+          background: var(--orange);
+        }
+        #boot-reticle .crosshair.h {
+          width: 100%; height: 1px; top: 50%; left: 0;
+        }
+        #boot-reticle .crosshair.v {
+          width: 1px; height: 100%; top: 0; left: 50%;
+        }
+        @keyframes reticleSpin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+        @keyframes reticlePulse { from{width:4px;height:4px;opacity:1} to{width:16px;height:16px;opacity:0.6} }
+
+        #boot-terminal {
+          font-family: 'Courier New', monospace;
+          font-size: 11px;
+          color: var(--orange);
+          text-align: left;
+          width: 380px;
+          max-height: 140px;
+          overflow: hidden;
+          background: rgba(255,140,0,0.03);
+          border: 1px solid rgba(255,140,0,0.15);
+          border-radius: 8px;
+          padding: 12px 16px;
+          line-height: 1.8;
+        }
+        #boot-terminal .line {
+          opacity: 0;
+          transform: translateX(-10px);
+          animation: termLine 0.15s ease forwards;
+        }
+        #boot-terminal .line.ok { color: #0f0; }
+        #boot-terminal .line.warn { color: #ff0; }
+        @keyframes termLine { to{opacity:1;transform:translateX(0)} }
+
+        #boot-progress {
+          width: 380px;
+          height: 3px;
+          background: rgba(255,140,0,0.15);
+          border-radius: 3px;
+          margin-top: 16px;
+          overflow: hidden;
+        }
+        #boot-progress-bar {
+          height: 100%;
+          width: 0%;
+          background: var(--orange);
+          border-radius: 3px;
+          transition: width 0.1s linear;
+        }
+        #boot-pct {
+          font-family: 'Courier New', monospace;
+          font-size: 11px;
+          color: var(--orange);
+          margin-top: 8px;
+        }
+
+        @keyframes reticleExpand {
+          0% { transform: scale(0.2); opacity: 1; }
+          60% { transform: scale(1.5); opacity: 0.8; }
+          100% { transform: scale(3); opacity: 0; }
+        }
+        #boot-reticle.explode {
+          animation: reticleExpand 0.6s ease forwards;
+        }
+
+        /* ======================== */
+        /* 3D HERO SECTION          */
+        /* ======================== */
+        .hero {
+          position: relative;
+          width: 100%;
+          height: 420px;
+          background: linear-gradient(135deg, #0a0a0a 0%, #1a1008 50%, #0a0a0a 100%);
+          border-radius: 18px;
+          overflow: hidden;
+          margin-bottom: 32px;
+          cursor: grab;
+        }
+        .hero:active { cursor: grabbing; }
+        .hero canvas { display: block; width: 100% !important; height: 100% !important; }
+        .hero-overlay {
+          position: absolute;
+          bottom: 0; left: 0; right: 0;
+          padding: 30px 28px 24px;
+          background: linear-gradient(transparent, rgba(0,0,0,0.85));
+          pointer-events: none;
+        }
+        .hero-overlay h1 {
+          font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          color: var(--orange);
+          margin-bottom: 6px;
+        }
+        .hero-overlay .subtitle {
+          color: rgba(255,255,255,0.7);
+          font-size: 0.95rem;
+          font-weight: 600;
+        }
+        .hero-badge {
+          position: absolute;
+          top: 16px; left: 16px;
+          padding: 6px 14px;
+          border-radius: 999px;
+          background: rgba(255,140,0,0.15);
+          border: 1px solid rgba(255,140,0,0.3);
+          color: var(--orange);
+          font-size: 0.7rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          backdrop-filter: blur(8px);
+        }
+        .hero-hint {
+          position: absolute;
+          top: 16px; right: 16px;
+          color: rgba(255,255,255,0.4);
+          font-size: 0.68rem;
+          letter-spacing: 0.04em;
+        }
+
+        /* HUD Overlay */
+        .hud-overlay {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 3;
+        }
+        .hud-corner {
+          position: absolute;
+          padding: 14px 16px;
+        }
+        .hud-tl { top: 0; left: 0; }
+        .hud-tr { top: 0; right: 0; text-align: right; }
+        .hud-label {
+          font-family: 'Courier New', monospace;
+          font-size: 0.62rem;
+          color: rgba(255,140,0,0.6);
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          margin-bottom: 4px;
+          line-height: 1.4;
+        }
+        .hud-label span {
+          color: rgba(255,140,0,0.9);
+          font-weight: 700;
+        }
+        .hud-ok { color: #00ff88 !important; }
+        #hud-wave {
+          display: block;
+          margin-top: 4px;
+          margin-left: auto;
+        }
+
+        /* Depth Tooltip */
+        .depth-tooltip {
+          position: absolute;
+          display: none;
+          padding: 6px 12px;
+          background: rgba(0,0,0,0.85);
+          border: 1px solid rgba(255,140,0,0.5);
+          border-radius: 6px;
+          z-index: 20;
+          pointer-events: none;
+          backdrop-filter: blur(4px);
+          font-family: 'Courier New', monospace;
+          font-size: 0.65rem;
+          color: #fff;
+          white-space: nowrap;
+          transform: translate(-50%, -120%);
+        }
+        .depth-tooltip .depth-title {
+          display: block;
+          color: var(--orange);
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          margin-bottom: 2px;
+        }
+        .depth-tooltip .depth-value {
+          color: rgba(255,255,255,0.7);
+        }
+        .depth-tooltip.visible { display: block; }
+
+        .section-label {
+          font-size: 0.75rem;
+          font-weight: 700;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--orange);
+          margin-bottom: 14px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .section-label::after {
+          content: '';
+          flex: 1;
+          height: 1px;
+          background: linear-gradient(90deg, var(--orange), transparent);
+        }
+
+        /* ======================== */
+        /* MAIN CONTENT             */
+        /* ======================== */
         .page {
           max-width: 1400px;
           margin: 0 auto;
           padding: 24px 20px 40px;
+          position: relative;
         }
         .back-link {
           display: inline-flex;
@@ -145,40 +401,82 @@ def create_app() -> Flask:
           background: transparent;
           transition: background 0.2s, color 0.2s;
         }
-        .back-link:hover {
-          background: var(--orange);
-          color: #fff;
-        }
-        h1 {
-          font-size: clamp(1.1rem, 2.2vw, 1.6rem);
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: var(--orange);
-          margin-bottom: 6px;
-        }
-        .subtitle {
-          color: #000;
-          font-size: 1.2rem;
-          font-weight: 700;
-          margin-bottom: 24px;
-          max-width: 720px;
-        }
+        .back-link:hover { background: var(--orange); color: #fff; }
+
+        /* ======================== */
+        /* OBJECTIVE CARDS          */
+        /* ======================== */
         .objectives-table {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: 16px;
+          opacity: 0;
+          transform: translateY(20px);
+          animation: staggerUp 0.6s ease 1.4s forwards;
         }
         .objective-cell {
           border: 2px solid #ddd;
           border-radius: 14px;
           padding: 20px 18px;
           background: #fff;
-          transition: border-color 0.3s, box-shadow 0.3s;
+          cursor: pointer;
+          position: relative;
+          overflow: hidden;
+          transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
         }
         .objective-cell:hover {
           border-color: var(--orange);
-          box-shadow: 0 4px 24px rgba(255, 140, 0, 0.15);
+          box-shadow: 0 4px 24px rgba(255,140,0,0.15);
+          transform: translateY(-3px);
         }
+
+        /* Bounding box draw-in corners */
+        .objective-cell::before,
+        .objective-cell::after {
+          content: '';
+          position: absolute;
+          width: 0; height: 0;
+          border: 2px solid var(--orange);
+          transition: width 0.35s ease, height 0.35s ease;
+          pointer-events: none;
+        }
+        .objective-cell::before {
+          top: 0; left: 0;
+          border-right: none; border-bottom: none;
+          border-radius: 14px 0 0 0;
+        }
+        .objective-cell::after {
+          bottom: 0; right: 0;
+          border-left: none; border-top: none;
+          border-radius: 0 0 14px 0;
+        }
+        .objective-cell:hover::before,
+        .objective-cell:hover::after {
+          width: 50%; height: 50%;
+        }
+
+        /* Reticle ring on number */
+        .num-ring {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .num-ring::before {
+          content: '';
+          position: absolute;
+          width: 38px; height: 38px;
+          border: 1.5px dashed rgba(255,140,0,0.35);
+          border-radius: 50%;
+          opacity: 0;
+          transition: opacity 0.3s;
+        }
+        .objective-cell:hover .num-ring::before {
+          opacity: 1;
+          animation: rotateReticle 3s linear infinite;
+        }
+        @keyframes rotateReticle { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+
         .objective-cell h2 {
           font-size: 0.9rem;
           letter-spacing: 0.08em;
@@ -193,23 +491,23 @@ def create_app() -> Flask:
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 24px;
-          height: 24px;
+          width: 26px; height: 26px;
           border-radius: 8px;
           background: var(--orange);
           color: #fff;
           font-size: 0.72rem;
           font-weight: 700;
           flex: 0 0 auto;
+          position: relative;
+          z-index: 1;
         }
         .objective-cell p {
           color: #1a1a1a;
-          font-size: 0.85rem;
+          font-size: 0.82rem;
           line-height: 1.7;
         }
-        .objective-cell {
-          cursor: pointer;
-        }
+
+        /* Laser scan button */
         .steps-toggle {
           display: inline-block;
           margin-top: 10px;
@@ -222,94 +520,502 @@ def create_app() -> Flask:
           padding: 5px 12px;
           border-radius: 6px;
           background: transparent;
-          transition: background 0.2s, color 0.2s;
           cursor: pointer;
+          position: relative;
+          overflow: hidden;
+          transition: background 0.2s, color 0.2s;
         }
-        .steps-toggle:hover {
-          background: var(--orange);
-          color: #fff;
+        .steps-toggle::after {
+          content: '';
+          position: absolute;
+          top: -100%; left: 0;
+          width: 100%; height: 100%;
+          background: linear-gradient(180deg, transparent, rgba(255,140,0,0.18), transparent);
+          pointer-events: none;
         }
-        .steps-tree {
-          display: none;
-          margin-top: 12px;
-          padding: 12px 14px;
-          border-radius: 10px;
-          background: #2a2a2a;
-          border: 1px solid #444;
-          font-size: 0.82rem;
-          line-height: 1.7;
-          color: #fff;
+        .objective-cell:hover .steps-toggle::after {
+          animation: laserScan 1.2s ease-in-out infinite;
         }
-        .steps-tree.open {
-          display: block;
-        }
-        .tree-item {
-          padding: 2px 0;
-        }
-        .tree-line {
-          color: #888;
-          margin-right: 4px;
-        }
-        @media (max-width: 1200px) {
-          .objectives-table { grid-template-columns: repeat(2, 1fr); }
-        }
-        @media (max-width: 900px) {
-          .objectives-table { grid-template-columns: 1fr; }
-        }
-        @media (max-width: 640px) {
-          .page { padding: 24px 16px 40px; }
-        }
-        .workflow-cell:hover {
-          border-color: var(--orange) !important;
-          box-shadow: 0 4px 20px rgba(255, 140, 0, 0.12);
-        }
+        @keyframes laserScan { 0%{top:-100%} 100%{top:200%} }
+        .steps-toggle:hover { background: var(--orange); color: #fff; }
 
+        /* Workflow gradient border */
+        .workflow-cell {
+          background: linear-gradient(#fff, #fff) padding-box,
+                      linear-gradient(0deg, var(--orange), transparent, var(--orange)) border-box;
+          border: 2px solid transparent;
+        }
+        @keyframes gradientMarch { from{--angle:0deg} to{--angle:360deg} }
+
+        @keyframes fadeDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes staggerUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+
+        @media (max-width: 1200px) { .objectives-table { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 900px) { .objectives-table { grid-template-columns: 1fr; } }
+        @media (max-width: 640px) { .hero { height: 280px; } }
       </style>
     </head>
     <body>
-      <div class="page">
-        
-        <h1>Perception Intelligence for Autonomous Vehicles using Monocular Vision and Deep Learning</h1>
-        <p class="subtitle">Project Overview</p>
 
+      <!-- ============================== -->
+      <!-- BOOT-UP OVERLAY                -->
+      <!-- ============================== -->
+      <div id="boot-overlay">
+        <div id="boot-reticle">
+          <div class="crosshair h"></div>
+          <div class="crosshair v"></div>
+        </div>
+        <div id="boot-terminal"></div>
+        <div id="boot-progress"><div id="boot-progress-bar"></div></div>
+        <div id="boot-pct">0%</div>
+      </div>
+
+      <!-- ============================== -->
+      <!-- 3D POINT-CLOUD HERO            -->
+      <!-- ============================== -->
+      <div class="page">
+        <div class="hero" id="hero-3d">
+          <div class="hero-badge">LiDAR SIMULATION</div>
+          <div class="hero-hint">Click &amp; Drag to Rotate</div>
+          <div class="hud-overlay">
+            <div class="hud-corner hud-tl">
+              <div class="hud-label">FPS <span id="hud-fps">60</span></div>
+              <div class="hud-label">LATENCY <span id="hud-latency">12ms</span></div>
+            </div>
+            <div class="hud-corner hud-tr">
+              <div class="hud-label">SYSTEM <span class="hud-ok">OPTIMAL</span></div>
+              <canvas id="hud-wave" width="80" height="24"></canvas>
+            </div>
+          </div>
+          <div class="depth-tooltip" id="depth-tooltip">
+            <span class="depth-title"></span>
+            <span class="depth-value"></span>
+          </div>
+          <div class="hero-overlay">
+            <h1>Perception Intelligence for Autonomous Vehicles</h1>
+            <p class="subtitle">Monocular Vision &bull; Deep Learning &bull; Neuro-Fuzzy Decision Systems</p>
+          </div>
+        </div>
+
+        <!-- ============================== -->
+        <!-- OBJECTIVE CARDS                -->
+        <!-- ============================== -->
         <div class="objectives-table">
           <div class="objective-cell" onclick="window.location.href='{{ url_for('objective1') }}'">
-            <h2><span class="num">1</span> Objective 1</h2>
-            <p>To develop an intelligent autonomous vehicle navigation framework for obstacle detection and environmental understanding using monocular vision and deep learning techniques. The proposed framework focuses on detecting static and dynamic obstacles, improving path awareness, and supporting adaptive navigation under complex traffic environments. Further, intelligent perception mechanisms are incorporated to improve navigation reliability and real-time vehicle response during uncertain driving conditions.</p>
+            <h2><span class="num-ring"><span class="num">1</span></span> Objective 1</h2>
+            <p>To develop an intelligent autonomous vehicle navigation framework for obstacle detection and environmental understanding using monocular vision and deep learning techniques. The proposed framework focuses on detecting static and dynamic obstacles, improving path awareness, and supporting adaptive navigation under complex traffic environments.</p>
             <div class="steps-toggle" style="pointer-events:none;">Open Pipeline &rarr;</div>
           </div>
           <div class="objective-cell" onclick="window.location.href='{{ url_for('objective2') }}'">
-            <h2><span class="num">2</span> Objective 2</h2>
-            <p>To design a vision-based lane and vehicle perception framework using YOLOv8-seg and neuro-fuzzy reasoning for accurate lane monitoring and intelligent driving assistance. The framework focuses on improving lane boundary detection, surrounding vehicle perception, and adaptive decision-making under challenging scenarios such as low illumination, occlusion, faded lane markings, and dense traffic conditions. In addition, neuro-fuzzy inference is incorporated to enable context-aware and human-like navigation support.</p>
+            <h2><span class="num-ring"><span class="num">2</span></span> Objective 2</h2>
+            <p>To design a vision-based lane and vehicle perception framework using YOLOv8-seg and neuro-fuzzy reasoning for accurate lane monitoring and intelligent driving assistance. The framework focuses on improving lane boundary detection, surrounding vehicle perception, and adaptive decision-making under challenging scenarios.</p>
             <div class="steps-toggle" style="pointer-events:none;">Open Pipeline &rarr;</div>
           </div>
           <div class="objective-cell" onclick="window.location.href='{{ url_for('objective3') }}'">
-            <h2><span class="num">3</span> Objective 3</h2>
-            <p>To develop a unified perception intelligence framework that integrates monocular depth estimation, geometric computation, contextual understanding, and neuro-fuzzy decision systems for real-time autonomous driving applications. The proposed framework focuses on improving explainable decision-making, uncertainty handling, and perception reliability using cost-effective monocular vision systems while supporting adaptive and safe autonomous navigation in dynamic road environments.</p>
+            <h2><span class="num-ring"><span class="num">3</span></span> Objective 3</h2>
+            <p>To develop a unified perception intelligence framework that integrates monocular depth estimation, geometric computation, contextual understanding, and neuro-fuzzy decision systems for real-time autonomous driving applications.</p>
             <div class="steps-toggle" style="pointer-events:none;">Open Pipeline &rarr;</div>
           </div>
           <div class="objective-cell workflow-cell" onclick="window.location.href='{{ url_for('complete_workflow') }}'">
-            <h2><span class="num">&#8635;</span> Complete Workflow</h2>
-            <p>End-to-end unified perception intelligence pipeline combining obstacle detection, lane monitoring, depth estimation, geometric computation, contextual understanding, and neuro-fuzzy decision making for autonomous vehicle navigation. This integrates all three objectives into a single real-time autonomous driving system.</p>
+            <h2><span class="num-ring"><span class="num">&#8635;</span></span> Complete Workflow</h2>
+            <p>End-to-end unified perception intelligence pipeline combining obstacle detection, lane monitoring, depth estimation, geometric computation, contextual understanding, and neuro-fuzzy decision making for autonomous vehicle navigation.</p>
             <div class="steps-toggle">Open Workflow &rarr;</div>
           </div>
         </div>
 
-
       </div>
+
+      <!-- ============================== -->
+      <!-- BOOT SEQUENCE SCRIPT           -->
+      <!-- ============================== -->
       <script>
-        function toggleSteps(id, cell) {
-          var el = document.getElementById(id);
-          var btn = cell.querySelector('.steps-toggle');
-          if (el.classList.contains('open')) {
-            el.classList.remove('open');
-            btn.textContent = 'View Steps';
-          } else {
-            el.classList.add('open');
-            btn.textContent = 'Hide Steps';
+      (function(){
+        var bootLines = [
+          {text:'> INITIALIZING PERCEPTION ENGINE...', cls:''},
+          {text:'  LOADING YOLOV8-SEG MODEL...', cls:''},
+          {text:'  YOLOV8-SEG: ONLINE', cls:'ok'},
+          {text:'  MONOCULAR DEPTH ESTIMATION: ONLINE', cls:'ok'},
+          {text:'  LANE DETECTION MODULE: ONLINE', cls:'ok'},
+          {text:'  GEOMETRIC COMPUTATION: ONLINE', cls:'ok'},
+          {text:'  NEURO-FUZZY INFERENCE: ACTIVE', cls:'ok'},
+          {text:'  VEHICLE TRACKER: ONLINE', cls:'ok'},
+          {text:'  SCENE UNDERSTANDING: ONLINE', cls:'ok'},
+          {text:'  ADAPTIVE NAVIGATION: READY', cls:'ok'},
+          {text:'> ALL SYSTEMS NOMINAL — 100%', cls:'warn'}
+        ];
+        var terminal = document.getElementById('boot-terminal');
+        var progressBar = document.getElementById('boot-progress-bar');
+        var pctText = document.getElementById('boot-pct');
+        var overlay = document.getElementById('boot-overlay');
+        var reticle = document.getElementById('boot-reticle');
+        var i = 0;
+        function addLine() {
+          if (i >= bootLines.length) {
+            setTimeout(function() {
+              reticle.classList.add('explode');
+              setTimeout(function() {
+                overlay.classList.add('done');
+                setTimeout(function(){ overlay.remove(); }, 600);
+              }, 500);
+            }, 300);
+            return;
+          }
+          var div = document.createElement('div');
+          div.className = 'line ' + bootLines[i].cls;
+          div.textContent = bootLines[i].text;
+          terminal.appendChild(div);
+          terminal.scrollTop = terminal.scrollHeight;
+          var pct = Math.round(((i + 1) / bootLines.length) * 100);
+          progressBar.style.width = pct + '%';
+          pctText.textContent = pct + '%';
+          i++;
+          setTimeout(addLine, 120 + Math.random() * 80);
+        }
+        setTimeout(addLine, 400);
+      })();
+      </script>
+
+      <!-- ============================== -->
+      <!-- THREE.JS 3D POINT CLOUD        -->
+      <!-- ============================== -->
+      <script>
+      (function(){
+        var container = document.getElementById('hero-3d');
+        var scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(0, 4, 12);
+        camera.lookAt(0, 0, 0);
+
+        var renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x0a0a0a, 1);
+        container.insertBefore(renderer.domElement, container.firstChild);
+
+        var ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambientLight);
+        var pointLight = new THREE.PointLight(0xff8c00, 1.5, 50);
+        pointLight.position.set(0, 6, 0);
+        scene.add(pointLight);
+
+        // ===== CAR =====
+        var carGroup = new THREE.Group();
+        var bodyGeo = new THREE.BoxGeometry(2.4, 0.7, 1.2);
+        var bodyMat = new THREE.MeshPhongMaterial({color:0x222222, emissive:0x111111, shininess:80});
+        var bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+        bodyMesh.position.y = 0.55;
+        carGroup.add(bodyMesh);
+
+        var cabinGeo = new THREE.BoxGeometry(1.4, 0.55, 1.0);
+        var cabinMat = new THREE.MeshPhongMaterial({color:0x111111, emissive:0x050505, shininess:120, transparent:true, opacity:0.85});
+        var cabin = new THREE.Mesh(cabinGeo, cabinMat);
+        cabin.position.set(-0.1, 1.1, 0);
+        carGroup.add(cabin);
+
+        var wheelGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.15, 16);
+        var wheelMat = new THREE.MeshPhongMaterial({color:0x333333});
+        [[-0.7,0.22,0.65],[-0.7,0.22,-0.65],[0.7,0.22,0.65],[0.7,0.22,-0.65]].forEach(function(p) {
+          var w = new THREE.Mesh(wheelGeo, wheelMat);
+          w.position.set(p[0], p[1], p[2]);
+          w.rotation.x = Math.PI / 2;
+          carGroup.add(w);
+        });
+
+        var lidarGeo = new THREE.CylinderGeometry(0.15, 0.18, 0.12, 16);
+        var lidarMat = new THREE.MeshPhongMaterial({color:0xff8c00, emissive:0xff8c00, emissiveIntensity:0.5});
+        var lidarMesh = new THREE.Mesh(lidarGeo, lidarMat);
+        lidarMesh.position.set(0, 1.4, 0);
+        carGroup.add(lidarMesh);
+        scene.add(carGroup);
+
+        // ===== GROUND GRID =====
+        var gridHelper = new THREE.GridHelper(80, 80, 0x332200, 0x1a1100);
+        scene.add(gridHelper);
+
+        // ===== ROAD LANES =====
+        var laneGroup = new THREE.Group();
+        function createLane(x, z, len, dir) {
+          var geo = new THREE.PlaneGeometry(0.12, len);
+          var mat = new THREE.MeshBasicMaterial({color:0xff8c00, transparent:true, opacity:0.6, side:THREE.DoubleSide});
+          var mesh = new THREE.Mesh(geo, mat);
+          mesh.rotation.x = -Math.PI / 2;
+          mesh.position.set(x, 0.02, z);
+          if (dir === 'h') { mesh.rotation.z = Math.PI / 2; }
+          mesh.userData.baseZ = z;
+          return mesh;
+        }
+        var laneLines = [];
+        [-2.0, -0.65, 0.65, 2.0].forEach(function(x) {
+          for (var z = -40; z < 40; z += 4) {
+            var lane = createLane(x, z, 2.5, 'v');
+            laneGroup.add(lane);
+            laneLines.push(lane);
+          }
+        });
+        // Center dashed line
+        for (var z = -40; z < 40; z += 5) {
+          var cl = createLane(0, z, 3, 'v');
+          cl.material.color.setHex(0xffffff);
+          cl.material.opacity = 0.4;
+          laneGroup.add(cl);
+          laneLines.push(cl);
+        }
+        scene.add(laneGroup);
+
+        // ===== POINT CLOUD =====
+        var particleCount = 1500;
+        var pGeo = new THREE.BufferGeometry();
+        var positions = new Float32Array(particleCount * 3);
+        var colors = new Float32Array(particleCount * 3);
+        var particleClusterIds = new Int32Array(particleCount);
+
+        var clusterDefs = [
+          {cx:-5, cy:1.5, cz:-6, r:3, label:'Car', conf:'0.94', dist:'14.2m', cls:0},
+          {cx:4, cy:1.5, cz:-10, r:3, label:'Car', conf:'0.91', dist:'22.8m', cls:1},
+          {cx:-3, cy:0.8, cz:-5, r:1.5, label:'Pedestrian', conf:'0.87', dist:'11.6m', cls:2},
+          {cx:6, cy:1.2, cz:-4, r:2, label:'Obstacle', conf:'0.96', dist:'8.3m', cls:3},
+          {cx:-6, cy:2, cz:-12, r:2.5, label:'Truck', conf:'0.82', dist:'28.1m', cls:4},
+          {cx:2, cy:0.6, cz:-7, r:1.5, label:'Pedestrian', conf:'0.89', dist:'16.4m', cls:5}
+        ];
+
+        for (var i = 0; i < particleCount; i++) {
+          var placed = false;
+          for (var c = 0; c < clusterDefs.length; c++) {
+            if (Math.random() < 0.4) {
+              var cd = clusterDefs[c];
+              positions[i*3] = cd.cx + (Math.random()-0.5) * cd.r;
+              positions[i*3+1] = cd.cy + (Math.random()-0.5) * cd.r * 0.6;
+              positions[i*3+2] = cd.cz + (Math.random()-0.5) * cd.r;
+              particleClusterIds[i] = c;
+              colors[i*3] = 1; colors[i*3+1] = 0.55; colors[i*3+2] = 0;
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) {
+            positions[i*3] = (Math.random()-0.5) * 50;
+            positions[i*3+1] = Math.random() * 10;
+            positions[i*3+2] = (Math.random()-0.5) * 50;
+            particleClusterIds[i] = -1;
+            var g = 0.4 + Math.random()*0.4;
+            colors[i*3] = g; colors[i*3+1] = g; colors[i*3+2] = g;
           }
         }
+        pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        pGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        var pMat = new THREE.PointsMaterial({size:0.08, vertexColors:true, transparent:true, opacity:0.8});
+        var particles = new THREE.Points(pGeo, pMat);
+        scene.add(particles);
+
+        // ===== BOUNDING BOXES ON CLUSTERS =====
+        var clusterBoxes = [];
+        clusterDefs.forEach(function(cd) {
+          var s = cd.r * 1.4;
+          var bg = new THREE.BoxGeometry(s, s * 0.8, s);
+          var edges = new THREE.EdgesGeometry(bg);
+          var lm = new THREE.LineBasicMaterial({color:0xff8c00, transparent:true, opacity:0.0});
+          var line = new THREE.LineSegments(edges, lm);
+          line.position.set(cd.cx, cd.cy, cd.cz);
+          line.userData = {def: cd, baseOpacity: 0.0, flash: 0};
+          scene.add(line);
+          clusterBoxes.push(line);
+        });
+
+        // ===== LIDAR WAVE RINGS =====
+        var rings = [];
+        function spawnRing() {
+          var ringGeo = new THREE.RingGeometry(0.1, 0.25, 64);
+          var ringMat = new THREE.MeshBasicMaterial({color:0xff8c00, transparent:true, opacity:0.6, side:THREE.DoubleSide});
+          var ring = new THREE.Mesh(ringGeo, ringMat);
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.set(0, 1.45, 0);
+          ring.userData = {age:0};
+          scene.add(ring);
+          rings.push(ring);
+        }
+        var ringTimer = 0;
+
+        // ===== MOUSE / CAMERA CONTROL =====
+        var isDragging = false;
+        var prevMouse = {x:0, y:0};
+        var rotY = 0, rotX = 0.3;
+        var targetRotY = 0, targetRotX = 0.3;
+        var cameraTarget = new THREE.Vector3(0, 0.5, 0);
+        var cameraTargetGoal = new THREE.Vector3(0, 0.5, 0);
+        var cameraRadius = 12;
+        var targetRadius = 12;
+
+        container.addEventListener('mousedown', function(e) {
+          isDragging = true;
+          prevMouse = {x:e.clientX, y:e.clientY};
+        });
+        window.addEventListener('mouseup', function() { isDragging = false; });
+        window.addEventListener('mousemove', function(e) {
+          if (!isDragging) return;
+          var dx = e.clientX - prevMouse.x;
+          var dy = e.clientY - prevMouse.y;
+          targetRotY += dx * 0.005;
+          targetRotX += dy * 0.003;
+          targetRotX = Math.max(-0.5, Math.min(1.0, targetRotX));
+          prevMouse = {x:e.clientX, y:e.clientY};
+        });
+
+        // ===== HOVER / RAYCASTER =====
+        var raycaster = new THREE.Raycaster();
+        var mouse = new THREE.Vector2(-999, -999);
+        var depthTooltip = document.getElementById('depth-tooltip');
+        container.addEventListener('mousemove', function(e) {
+          var rect = container.getBoundingClientRect();
+          mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          depthTooltip.style.left = (e.clientX - rect.left) + 'px';
+          depthTooltip.style.top = (e.clientY - rect.top) + 'px';
+        });
+        container.addEventListener('mouseleave', function() {
+          mouse.set(-999, -999);
+          depthTooltip.classList.remove('visible');
+        });
+
+        // ===== CARD CLICK -> CAMERA FOCUS =====
+        window.focusCameraOn = function(target, radius, height) {
+          cameraTargetGoal.copy(target);
+          targetRadius = radius;
+          targetRotX = height;
+        };
+
+        // ===== HUD WAVE CANVAS =====
+        var hudWave = document.getElementById('hud-wave');
+        var wCtx = hudWave.getContext('2d');
+        var waveData = new Float32Array(80);
+        function drawHudWave() {
+          wCtx.clearRect(0, 0, 80, 24);
+          wCtx.strokeStyle = 'rgba(255,140,0,0.5)';
+          wCtx.lineWidth = 1;
+          wCtx.beginPath();
+          for (var x = 0; x < 80; x++) {
+            waveData[x] = waveData[x+1] || 0;
+          }
+          var t2 = Date.now() * 0.003;
+          for (var x = 0; x < 80; x++) {
+            waveData[x] = Math.sin(t2 + x * 0.15) * 8 + Math.sin(t2 * 2.3 + x * 0.08) * 4;
+            var y = 12 + waveData[x];
+            if (x === 0) wCtx.moveTo(x, y); else wCtx.lineTo(x, y);
+          }
+          wCtx.stroke();
+        }
+
+        // ===== FPS COUNTER =====
+        var frameCount = 0;
+        var lastFpsTime = performance.now();
+        var fpsDisplay = document.getElementById('hud-fps');
+        var latencyDisplay = document.getElementById('hud-latency');
+
+        // ===== ANIMATION LOOP =====
+        var clock = new THREE.Clock();
+        function animate() {
+          requestAnimationFrame(animate);
+          var t = clock.getElapsedTime();
+          var dt = clock.getDelta();
+
+          // FPS
+          frameCount++;
+          var now = performance.now();
+          if (now - lastFpsTime > 500) {
+            var fps = Math.round(frameCount / ((now - lastFpsTime) / 1000));
+            fpsDisplay.textContent = fps;
+            latencyDisplay.textContent = Math.round(1000 / Math.max(fps, 1)) + 'ms';
+            frameCount = 0;
+            lastFpsTime = now;
+          }
+
+          // Camera
+          rotY += (targetRotY - rotY) * 0.06;
+          rotX += (targetRotX - rotX) * 0.06;
+          cameraRadius += (targetRadius - cameraRadius) * 0.06;
+          cameraTarget.lerp(cameraTargetGoal, 0.06);
+          camera.position.x = Math.sin(rotY) * cameraRadius;
+          camera.position.z = Math.cos(rotY) * cameraRadius;
+          camera.position.y = 2 + rotX * 8;
+          camera.lookAt(cameraTarget);
+
+          // Road lanes scroll backward (driving illusion)
+          laneLines.forEach(function(lane) {
+            lane.position.z += 0.08;
+            if (lane.position.z > 40) lane.position.z -= 80;
+          });
+
+          // LiDAR rings
+          ringTimer++;
+          if (ringTimer % 40 === 0) spawnRing();
+          for (var r = rings.length - 1; r >= 0; r--) {
+            var ring = rings[r];
+            ring.userData.age += 0.02;
+            var s = 1 + ring.userData.age * 10;
+            ring.scale.set(s, s, 1);
+            ring.material.opacity = 0.6 * Math.max(0, 1 - ring.userData.age);
+            if (ring.userData.age > 1) {
+              scene.remove(ring);
+              ring.geometry.dispose();
+              ring.material.dispose();
+              rings.splice(r, 1);
+            }
+          }
+
+          // Particle shimmer
+          var posArr = particles.geometry.attributes.position.array;
+          for (var i = 0; i < particleCount; i++) {
+            posArr[i*3+1] += Math.sin(t * 2 + i) * 0.001;
+          }
+          particles.geometry.attributes.position.needsUpdate = true;
+
+          // Pulse light
+          pointLight.intensity = 1.2 + Math.sin(t * 3) * 0.3;
+
+          // Raycaster for bounding box hover
+          raycaster.setFromCamera(mouse, camera);
+          var hits = raycaster.intersectObjects(clusterBoxes, false);
+          var hoveredBox = hits.length > 0 ? hits[0].object : null;
+
+          clusterBoxes.forEach(function(bl) {
+            var def = bl.userData.def;
+            var isHovered = (bl === hoveredBox);
+
+            // Flash on LiDAR ring pass
+            var ringDist = Math.abs(bl.position.z);
+            var ringFlash = 0;
+            rings.forEach(function(ring) {
+              var dist = Math.abs(ring.position.z - bl.position.z);
+              if (dist < 3 && ring.userData.age < 0.3) ringFlash = 0.8;
+            });
+            bl.userData.flash = Math.max(ringFlash, bl.userData.flash * 0.95);
+
+            var targetOp = isHovered ? 0.9 : (bl.userData.flash > 0.1 ? 0.7 + bl.userData.flash * 0.3 : 0.15);
+            bl.material.opacity += (targetOp - bl.material.opacity) * 0.1;
+
+            if (isHovered) {
+              depthTooltip.querySelector('.depth-title').textContent = def.label + ' [' + Math.round(parseFloat(def.conf)*100) + '%]';
+              depthTooltip.querySelector('.depth-value').textContent = 'Depth: ' + def.dist;
+              depthTooltip.classList.add('visible');
+            }
+          });
+
+          if (!hoveredBox) depthTooltip.classList.remove('visible');
+
+          // HUD wave
+          drawHudWave();
+
+          renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', function() {
+          camera.aspect = container.clientWidth / container.clientHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+      })();
       </script>
+
     </body>
     </html>
     """
@@ -370,12 +1076,12 @@ def create_app() -> Flask:
         .back-link:hover { background: var(--orange); color: #fff; }
         h1 { font-size: 1.6rem; color: var(--orange); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
         .subtitle { color: #555; font-size: 1rem; margin-bottom: 28px; }
-        .layout { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: stretch; }
+        .layout { display: grid; grid-template-columns: 280px 1fr; gap: 40px; align-items: start; }
         .video-panel {
           border: 2px solid #ddd; border-radius: 16px; overflow: hidden; background: #000;
-          position: relative; transition: border-color 0.3s; height: calc(100% - 60px);
+          position: relative; transition: border-color 0.3s;
         }
-        .video-panel img { width: 100%; height: 100%; display: block; object-fit: cover; }
+        .video-panel img { width: 100%; height: auto; display: block; object-fit: contain; max-height: 70vh; }
         .video-badge {
           position: absolute; left: 14px; top: 14px;
           padding: 7px 14px; border-radius: 999px;
@@ -394,7 +1100,7 @@ def create_app() -> Flask:
         .pipeline-panel {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
-          gap: 14px;
+          gap: 8px;
           align-items: stretch;
         }
         .pipeline-panel .step-arrow {
@@ -411,27 +1117,27 @@ def create_app() -> Flask:
           grid-column: 1 / -1;
         }
         .step-card {
-          border: 2px solid #ddd; border-radius: 14px; padding: 18px 20px;
+          border: 2px solid #ddd; border-radius: 10px; padding: 8px 10px;
           background: #fff; transition: border-color 0.3s, box-shadow 0.3s;
         }
         .step-card.active {
           border-color: var(--orange);
-          box-shadow: 0 2px 16px rgba(255,140,0,0.12);
+          box-shadow: 0 2px 12px rgba(255,140,0,0.12);
         }
         .step-card h3 {
-          font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em;
+          font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
           color: var(--orange); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
         }
         .step-card h3 .step-num {
-          width: 26px; height: 26px; border-radius: 8px; background: var(--orange);
+          width: 18px; height: 18px; border-radius: 5px; background: var(--orange);
           color: #fff; display: inline-flex; align-items: center; justify-content: center;
-          font-size: 0.75rem; font-weight: 700; flex: 0 0 auto;
+          font-size: 0.55rem; font-weight: 700; flex: 0 0 auto;
         }
         .step-card .step-status {
-          font-size: 0.88rem; font-weight: 600; color: #1a1a1a; margin-bottom: 4px;
+          font-size: 0.7rem; font-weight: 600; color: #1a1a1a; margin-bottom: 0;
         }
         .step-card .step-detail {
-          font-size: 0.8rem; color: #666; line-height: 1.5;
+          font-size: 0.62rem; color: #666; line-height: 1.3;
         }
         .step-arrow {
           display: flex; justify-content: center; padding: 6px 0; color: var(--orange); font-size: 1rem; font-weight: 700;
@@ -452,20 +1158,6 @@ def create_app() -> Flask:
         <p class="subtitle">Obstacle Detection &bull; Environmental Understanding &bull; Adaptive Navigation</p>
 
         <div class="layout">
-          <div>
-            <div class="video-panel">
-              <div class="video-badge">Live Processing</div>
-              <img src="{{ url_for('obj1_video_feed') }}" alt="video feed">
-            </div>
-            <div class="upload-row">
-              <form id="upload-form" action="{{ url_for('obj1_upload') }}" method="post" enctype="multipart/form-data">
-                <input id="video-input" type="file" name="file" accept="video/*">
-                <button type="button" id="load-btn">Load Video</button>
-              </form>
-              <span class="upload-hint" id="upload-hint">Upload a video to start processing</span>
-            </div>
-          </div>
-
           <div class="pipeline-panel">
             <div class="step-card" id="step1">
               <h3><span class="step-num">1</span> Obstacle Detection</h3>
@@ -486,6 +1178,20 @@ def create_app() -> Flask:
             <div class="step-card" id="step3">
               <h3><span class="step-num">5</span> Adaptive Navigation</h3>
               <div class="step-status" id="s3-status">Waiting...</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="video-panel">
+              <div class="video-badge">Live Processing</div>
+              <img src="{{ url_for('obj1_video_feed') }}" alt="video feed">
+            </div>
+            <div class="upload-row">
+              <form id="upload-form" action="{{ url_for('obj1_upload') }}" method="post" enctype="multipart/form-data">
+                <input id="video-input" type="file" name="file" accept="video/*,image/*">
+                <button type="button" id="load-btn">Load Media</button>
+              </form>
+              <span class="upload-hint" id="upload-hint">Upload a video or image to start processing</span>
             </div>
           </div>
         </div>
@@ -608,12 +1314,12 @@ def create_app() -> Flask:
         .back-link:hover { background: var(--orange); color: #fff; }
         h1 { font-size: 1.6rem; color: var(--orange); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
         .subtitle { color: #555; font-size: 1rem; margin-bottom: 28px; }
-        .layout { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: stretch; }
+        .layout { display: grid; grid-template-columns: 280px 1fr; gap: 40px; align-items: start; }
         .video-panel {
           border: 2px solid #ddd; border-radius: 16px; overflow: hidden; background: #000;
-          position: relative; transition: border-color 0.3s; height: calc(100% - 60px);
+          position: relative; transition: border-color 0.3s;
         }
-        .video-panel img { width: 100%; height: 100%; display: block; object-fit: cover; }
+        .video-panel img { width: 100%; height: auto; display: block; object-fit: contain; max-height: 70vh; }
         .video-badge {
           position: absolute; left: 14px; top: 14px;
           padding: 7px 14px; border-radius: 999px;
@@ -625,37 +1331,55 @@ def create_app() -> Flask:
         .upload-row button {
           padding: 10px 18px; border-radius: 10px; border: 0; cursor: pointer;
           background: var(--orange); color: #fff; font-weight: 700; font-size: 0.88rem;
+          transition: opacity 0.2s;
         }
         .upload-row button:hover { opacity: 0.85; }
         .upload-hint { color: #888; font-size: 0.85rem; }
         .pipeline-panel {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
-          gap: 14px;
+          gap: 8px;
           align-items: stretch;
         }
+        .pipeline-panel .step-arrow {
+          display: none;
+        }
         .step-card {
-          border: 2px solid #ddd; border-radius: 14px; padding: 18px 20px;
+          display: flex;
+          flex-direction: column;
+        }
+        .step-card .step-detail {
+          margin-top: auto;
+        }
+        .step-card:last-child {
+          grid-column: auto;
+        }
+        .step-card {
+          border: 2px solid #ddd; border-radius: 10px; padding: 8px 10px;
           background: #fff; transition: border-color 0.3s, box-shadow 0.3s;
-          display: flex; flex-direction: column; justify-content: center;
         }
         .step-card.active {
           border-color: var(--orange);
-          box-shadow: 0 2px 16px rgba(255,140,0,0.12);
+          box-shadow: 0 2px 12px rgba(255,140,0,0.12);
         }
         .step-card h3 {
-          font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em;
-          color: var(--orange); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;
+          font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+          color: var(--orange); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
         }
         .step-card h3 .step-num {
-          width: 26px; height: 26px; border-radius: 8px; background: var(--orange);
+          width: 18px; height: 18px; border-radius: 5px; background: var(--orange);
           color: #fff; display: inline-flex; align-items: center; justify-content: center;
-          font-size: 0.75rem; font-weight: 700; flex: 0 0 auto;
+          font-size: 0.55rem; font-weight: 700; flex: 0 0 auto;
         }
         .step-card .step-status {
-          font-size: 0.88rem; font-weight: 600; color: #1a1a1a;
+          font-size: 0.7rem; font-weight: 600; color: #1a1a1a; margin-bottom: 0;
         }
-        .pipeline-panel .step-arrow { display: none; }
+        .step-card .step-detail {
+          font-size: 0.62rem; color: #666; line-height: 1.3;
+        }
+        .step-arrow {
+          display: flex; justify-content: center; padding: 6px 0; color: var(--orange); font-size: 1rem; font-weight: 700;
+        }
         @keyframes pulse-border {
           0% { border-color: #ddd; }
           50% { border-color: var(--orange); box-shadow: 0 0 12px rgba(255,140,0,0.15); }
@@ -672,20 +1396,6 @@ def create_app() -> Flask:
         <p class="subtitle">Lane Monitoring &bull; Vehicle Perception &bull; Driving Assistance &bull; Challenging Road Conditions</p>
 
         <div class="layout">
-          <div>
-            <div class="video-panel">
-              <div class="video-badge">Live Processing</div>
-              <img src="{{ url_for('obj2_video_feed') }}" alt="video feed">
-            </div>
-            <div class="upload-row">
-              <form id="upload-form" action="{{ url_for('obj2_upload') }}" method="post" enctype="multipart/form-data">
-                <input id="video-input" type="file" name="file" accept="video/*">
-                <button type="button" id="load-btn">Load Video</button>
-              </form>
-              <span class="upload-hint" id="upload-hint">Upload a video to start processing</span>
-            </div>
-          </div>
-
           <div class="pipeline-panel">
             <div class="step-card" id="step1">
               <h3><span class="step-num">1</span> Lane Monitoring</h3>
@@ -710,6 +1420,20 @@ def create_app() -> Flask:
             <div class="step-card" id="step6">
               <h3><span class="step-num">6</span> Challenging Road Conditions</h3>
               <div class="step-status" id="s6-status">Waiting...</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="video-panel">
+              <div class="video-badge">Live Processing</div>
+              <img src="{{ url_for('obj2_video_feed') }}" alt="video feed">
+            </div>
+            <div class="upload-row">
+              <form id="upload-form" action="{{ url_for('obj2_upload') }}" method="post" enctype="multipart/form-data">
+                <input id="video-input" type="file" name="file" accept="video/*,image/*">
+                <button type="button" id="load-btn">Load Media</button>
+              </form>
+              <span class="upload-hint" id="upload-hint">Upload a video or image to start processing</span>
             </div>
           </div>
         </div>
@@ -834,12 +1558,12 @@ def create_app() -> Flask:
         .back-link:hover { background: var(--orange); color: #fff; }
         h1 { font-size: 1.6rem; color: var(--orange); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
         .subtitle { color: #555; font-size: 1rem; margin-bottom: 28px; }
-        .layout { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: stretch; }
+        .layout { display: grid; grid-template-columns: 280px 1fr; gap: 40px; align-items: start; }
         .video-panel {
           border: 2px solid #ddd; border-radius: 16px; overflow: hidden; background: #000;
-          position: relative; transition: border-color 0.3s; height: calc(100% - 60px);
+          position: relative; transition: border-color 0.3s;
         }
-        .video-panel img { width: 100%; height: 100%; display: block; object-fit: cover; }
+        .video-panel img { width: 100%; height: auto; display: block; object-fit: contain; max-height: 70vh; }
         .video-badge {
           position: absolute; left: 14px; top: 14px;
           padding: 7px 14px; border-radius: 999px;
@@ -857,29 +1581,31 @@ def create_app() -> Flask:
         .pipeline-panel {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
-          gap: 14px;
+          gap: 8px;
           align-items: stretch;
         }
         .step-card {
-          border: 2px solid #ddd; border-radius: 14px; padding: 18px 20px;
+          display: flex; flex-direction: column;
+        }
+        .step-card {
+          border: 2px solid #ddd; border-radius: 10px; padding: 8px 10px;
           background: #fff; transition: border-color 0.3s, box-shadow 0.3s;
-          display: flex; flex-direction: column; justify-content: center;
         }
         .step-card.active {
           border-color: var(--orange);
-          box-shadow: 0 2px 16px rgba(255,140,0,0.12);
+          box-shadow: 0 2px 12px rgba(255,140,0,0.12);
         }
         .step-card h3 {
-          font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em;
-          color: var(--orange); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;
+          font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+          color: var(--orange); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
         }
         .step-card h3 .step-num {
-          width: 26px; height: 26px; border-radius: 8px; background: var(--orange);
+          width: 18px; height: 18px; border-radius: 5px; background: var(--orange);
           color: #fff; display: inline-flex; align-items: center; justify-content: center;
-          font-size: 0.75rem; font-weight: 700; flex: 0 0 auto;
+          font-size: 0.55rem; font-weight: 700; flex: 0 0 auto;
         }
         .step-card .step-status {
-          font-size: 0.88rem; font-weight: 600; color: #1a1a1a;
+          font-size: 0.7rem; font-weight: 600; color: #1a1a1a; margin-bottom: 0;
         }
         .pipeline-panel .step-arrow { display: none; }
         @keyframes pulse-border {
@@ -898,20 +1624,6 @@ def create_app() -> Flask:
         <p class="subtitle">Unified Perception Intelligence Framework &bull; Depth Estimation &bull; Geometric Computation &bull; Context-Aware Perception &bull; Spatial Understanding &bull; Uncertainty Handling &bull; Neuro-Fuzzy Decision Systems</p>
 
         <div class="layout">
-          <div>
-            <div class="video-panel">
-              <div class="video-badge">Live Processing</div>
-              <img src="{{ url_for('obj3_video_feed') }}" alt="video feed">
-            </div>
-            <div class="upload-row">
-              <form id="upload-form" action="{{ url_for('obj3_upload') }}" method="post" enctype="multipart/form-data">
-                <input id="video-input" type="file" name="file" accept="video/*">
-                <button type="button" id="load-btn">Load Video</button>
-              </form>
-              <span class="upload-hint" id="upload-hint">Upload a video to start processing</span>
-            </div>
-          </div>
-
           <div class="pipeline-panel">
             <div class="step-card" id="step1">
               <h3><span class="step-num">1</span> Monocular Depth Estimation</h3>
@@ -936,6 +1648,20 @@ def create_app() -> Flask:
             <div class="step-card" id="step6">
               <h3><span class="step-num">6</span> Neuro-Fuzzy Decision Systems</h3>
               <div class="step-status" id="s6-status">Waiting...</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="video-panel">
+              <div class="video-badge">Live Processing</div>
+              <img src="{{ url_for('obj3_video_feed') }}" alt="video feed">
+            </div>
+            <div class="upload-row">
+              <form id="upload-form" action="{{ url_for('obj3_upload') }}" method="post" enctype="multipart/form-data">
+                <input id="video-input" type="file" name="file" accept="video/*,image/*">
+                <button type="button" id="load-btn">Load Media</button>
+              </form>
+              <span class="upload-hint" id="upload-hint">Upload a video or image to start processing</span>
             </div>
           </div>
         </div>
@@ -1056,8 +1782,8 @@ def create_app() -> Flask:
         }
         .layout {
           display: grid;
-          grid-template-columns: 1fr 340px;
-          gap: 24px;
+          grid-template-columns: 280px 1fr;
+          gap: 20px;
           align-items: start;
         }
         @media (max-width: 800px) {
@@ -1095,7 +1821,7 @@ def create_app() -> Flask:
           margin-bottom: 14px;
         }
         .decision-chip {
-          padding: 10px;
+          padding: 8px 10px;
           border-radius: 10px;
           border: 2px solid #ddd;
           background: #fff;
@@ -1106,20 +1832,20 @@ def create_app() -> Flask:
           border-color: var(--orange);
         }
         .decision-chip .chip-label {
-          font-size: 0.65rem;
+          font-size: 0.62rem;
           letter-spacing: 0.06em;
           text-transform: uppercase;
           color: #888;
           margin-bottom: 4px;
         }
         .decision-chip .chip-value {
-          font-size: 0.95rem;
+          font-size: 0.7rem;
           font-weight: 700;
           color: var(--orange);
         }
         .status-info {
           color: #555;
-          font-size: 0.95rem;
+          font-size: 0.7rem;
           line-height: 1.6;
           margin-bottom: 4px;
         }
@@ -1130,7 +1856,7 @@ def create_app() -> Flask:
           display: flex;
           align-items: center;
           gap: 10px;
-          padding: 10px 14px;
+          padding: 8px 10px;
           border-radius: 10px;
           background: linear-gradient(135deg, #fff8f0, #fff);
           border: 2px solid var(--orange);
@@ -1145,7 +1871,7 @@ def create_app() -> Flask:
         .safe-banner p {
           margin: 0;
           font-weight: 600;
-          font-size: 0.85rem;
+          font-size: 0.7rem;
           color: #1a1a1a;
         }
         .metric-grid {
@@ -1155,7 +1881,7 @@ def create_app() -> Flask:
           margin-top: 10px;
         }
         .metric {
-          padding: 10px;
+          padding: 8px 10px;
           border-radius: 10px;
           background: #f9f6f2;
           border: 1px solid #eee;
@@ -1169,14 +1895,14 @@ def create_app() -> Flask:
           margin-bottom: 4px;
         }
         .metric strong {
-          font-size: 0.82rem;
+          font-size: 0.7rem;
           color: #1a1a1a;
         }
         .video-panel {
           border: 2px solid #ddd; border-radius: 16px; overflow: hidden; background: #000;
           position: relative; transition: border-color 0.3s;
         }
-        .video-panel img { width: 100%; display: block; }
+        .video-panel img { width: 100%; height: auto; display: block; object-fit: contain; max-height: 70vh; }
         .video-badge {
           position: absolute; left: 14px; top: 14px;
           padding: 6px 12px; border-radius: 999px;
@@ -1201,20 +1927,6 @@ def create_app() -> Flask:
         <h1>Complete Workflow</h1>
 
         <div class="layout">
-          <div>
-            <div class="video-panel">
-              <div class="video-badge">Live Processing</div>
-              <img src="{{ url_for('video_feed') }}" alt="video feed">
-            </div>
-            <div class="upload-row">
-              <form id="upload-form" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
-                <input id="video-input" type="file" name="file" accept="video/*">
-                <button type="button" id="load-btn">Load Video</button>
-              </form>
-              <span class="upload-hint" id="upload-hint">Upload a video to start processing</span>
-            </div>
-          </div>
-
           <div>
             <h2 class="section-title">Final Decision</h2>
             <div class="decision-grid">
@@ -1245,6 +1957,20 @@ def create_app() -> Flask:
               <div class="metric"><span>Obstacle Distance</span><strong id="obstacle-distance">0.0</strong></div>
               <div class="metric"><span>Scene Risk</span><strong id="scene-risk">0.0</strong></div>
               <div class="metric"><span>Driving Mode</span><strong id="driving-mode">normal</strong></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="video-panel">
+              <div class="video-badge">Live Processing</div>
+              <img src="{{ url_for('video_feed') }}" alt="video feed">
+            </div>
+            <div class="upload-row">
+              <form id="upload-form" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+                <input id="video-input" type="file" name="file" accept="video/*,image/*">
+                <button type="button" id="load-btn">Load Media</button>
+              </form>
+              <span class="upload-hint" id="upload-hint">Upload a video or image to start processing</span>
             </div>
           </div>
         </div>
