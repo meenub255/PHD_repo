@@ -156,7 +156,7 @@ class AdaptiveNavigator:
         annotated = self.lane_detector.draw_lanes(frame, left_line, right_line)
         annotated = self.obstacle_detector.draw_detections(annotated, display_detections)
         annotated = self._draw_tracks(annotated, tracks)
-        annotated = self.depth_estimator.draw_depth_overlay(annotated, observations)
+
         if draw_hud:
             annotated = self._draw_hud(
                 annotated,
