@@ -260,5 +260,12 @@ class LaneDetector:
                 return None
 
     def draw_lanes(self, frame: np.ndarray, left_curve=None, right_curve=None) -> np.ndarray:
-        """Return clean frame — detection runs internally, no overlay drawn."""
-        return frame
+        """Draw segmented lane pixels only — no fill, no boundary lines."""
+        annotated = frame.copy()
+
+        if self._last_lane_mask is not None and np.any(self._last_lane_mask):
+            green_overlay = annotated.copy()
+            green_overlay[self._last_lane_mask > 0] = (0, 255, 0)
+            annotated = cv2.addWeighted(annotated, 0.22, green_overlay, 0.78, 0)
+
+        return annotated
