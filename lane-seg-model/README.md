@@ -1,11 +1,11 @@
 
 <div align="center">
 
-# TwinLiteNet ONNX Model Inference with ONNX Runtime
+# Lane Segmentation ONNX Model Inference with ONNX Runtime
 
 </div>
 
-This repository includes a C++ implementation for performing inference with the state-of-the-art [TwinLiteNet model](https://github.com/chequanghuy/TwinLiteNet) using ONNX Runtime. TwinLiteNet is a cutting-edge lane detection and drivable area segmentation model. This implementation provides support for both CUDA and CPU inference through build options.
+This repository includes a C++ implementation for performing inference with a lane detection and drivable area segmentation model using ONNX Runtime. This implementation provides support for both CUDA and CPU inference through build options.
 
 
 
@@ -27,7 +27,7 @@ This repository includes a C++ implementation for performing inference with the 
 
 ## Acknowledgment 🌟
 
-I would like to express sincere gratitude to the creators of the [TwinLiteNet model](https://github.com/chequanghuy/TwinLiteNet) for their remarkable work .Their open-source contribution has had a profound impact on the community and has paved the way for numerous applications in autonomous driving, robotics, and beyond.Thank you for your exceptional work.
+I would like to express sincere gratitude to the creators of the original model for their remarkable work. Their open-source contribution has had a profound impact on the community and has paved the way for numerous applications in autonomous driving, robotics, and beyond. Thank you for your exceptional work.
 <br>
 <br>
 
@@ -43,12 +43,12 @@ The project has the following structure:
 ├── assets/
 ├── images/
 ├── include/
-│   └── twinlitenet_onnxruntime.hpp
+│   └── lane_seg.hpp
 ├── models/
 │   └── best.onnx
 └── src/
     ├── main.cpp
-    └── twinlitenet_onnxruntime.cpp
+    └── lane_seg.cpp
 ```
 
 <br>
@@ -83,8 +83,3 @@ make -j8
 
 This project is licensed under the [MIT License](LICENSE). Feel free to use it in both open-source and commercial applications.
 <br><br>
-
-## Extras
-
-- [TwinLiteNet](https://github.com/chequanghuy/TwinLiteNet) 
-- [TwinLiteNet-OpenCV-DNN](https://github.com/harrylal/TwinLiteNet-onnx-opencv-dnn)

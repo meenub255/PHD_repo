@@ -1,7 +1,7 @@
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 
 cmake_minimum_required(VERSION 2.8.3)
-project(twinlitenet_onnx)
+project(lane_seg_onnx)
 
 # Options
 option(ENABLE_CUDA "Enable CUDA" OFF)
@@ -15,10 +15,10 @@ find_package(OpenCV REQUIRED)
 find_package(onnxruntime REQUIRED)
 
 set(HEADER_FILES
-    include/twinlitenet_onnxruntime.hpp)
+    include/lane_seg.hpp)
 set(SOURCE_FILES
     src/main.cpp
-    src/twinlitenet_onnxruntime.cpp)
+    src/lane_seg.cpp)
 
 # general Includes
 include_directories(

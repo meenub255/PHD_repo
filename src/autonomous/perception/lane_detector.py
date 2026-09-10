@@ -1,4 +1,4 @@
-"""TwinLiteNet deep learning lane detection."""
+"""Deep learning lane segmentation."""
 from collections import deque
 import logging
 from pathlib import Path
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class LaneDetector:
-    """Lane detector using TwinLiteNet ONNX model."""
+    """Lane detector using deep learning ONNX segmentation model."""
 
     def __init__(self, model_path: str | Path | None = None):
         self._left_history = deque(maxlen=8)
@@ -33,13 +33,13 @@ class LaneDetector:
         self._ego_left_idx = None
         self._ego_right_idx = None
 
-        # Resolve TwinLiteNet ONNX model path
+        # Resolve ONNX model path
         if model_path is None:
             root_dir = Path(__file__).resolve().parents[3]
             candidates = [
-                root_dir / "TwinLiteNet-onnxruntime" / "models" / "best.onnx",
+                root_dir / "lane-seg-model" / "models" / "best.onnx",
                 root_dir / "models" / "best.onnx",
-                Path("TwinLiteNet-onnxruntime/models/best.onnx"),
+                Path("lane-seg-model/models/best.onnx"),
             ]
             for c in candidates:
                 if c.exists():
@@ -55,21 +55,21 @@ class LaneDetector:
                     providers=["CPUExecutionProvider"],
                 )
                 self._input_name = self.session.get_inputs()[0].name
-                logger.info("TwinLiteNet ONNX model loaded from %s", model_path)
+                logger.info("Lane segmentation ONNX model loaded from %s", model_path)
             except Exception as e:
-                logger.warning("Failed to load TwinLiteNet ONNX model: %s", e)
+                logger.warning("Failed to load lane segmentation ONNX model: %s", e)
                 self.session = None
 
     def detect_lanes(self, frame: np.ndarray):
-        """Detect lanes using TwinLiteNet ONNX model."""
+        """Detect lanes using ONNX segmentation model."""
         if self.session is not None:
-            return self._detect_lanes_twinlitenet(frame)
+            return self._detect_lanes_model(frame)
 
         # Return empty result if model not loaded
         return None, None, 0.0
 
-    def _detect_lanes_twinlitenet(self, frame: np.ndarray):
-        """Run TwinLiteNet ONNX inference. Isolates only the vehicle's ego driving lane
+    def _detect_lanes_model(self, frame: np.ndarray):
+        """Run ONNX inference. Isolates only the vehicle's ego driving lane
         using connected-component analysis so adjacent highway lanes are excluded."""
         h_orig, w_orig = frame.shape[:2]
         cx = w_orig // 2

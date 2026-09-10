@@ -1,16 +1,16 @@
-#ifndef TWINLITENET_ONNXRUNTIME_HPP_
-#define TWINLITENET_ONNXRUNTIME_HPP_
+#ifndef LANE_SEG_HPP_
+#define LANE_SEG_HPP_
 
 #include <opencv2/opencv.hpp>
 #include <numeric>
 #include "onnxruntime_float16.h"
 #include "onnxruntime_cxx_api.h"
 
-class TwinLiteNet
+class LaneSegModel
 {
 public:
-        TwinLiteNet(std::string model_path, int cuda_device_id = 0);
-        ~TwinLiteNet();
+        LaneSegModel(std::string model_path, int cuda_device_id = 0);
+        ~LaneSegModel();
         void Infer(const cv::Mat &image, cv::Mat &da_out, cv::Mat &ll_out);
 
 private:
@@ -26,7 +26,7 @@ private:
         std::vector<const char *> input_node_names_;
         std::vector<const char *> output_node_names_;
         std::vector<int64_t> input_node_dims_ = {1, 3, 360, 640};
-        std::vector<int> per_outsection_dims = {2, 360, 640}; // pls refer twinlitenet architecture
+        std::vector<int> per_outsection_dims = {2, 360, 640};
 };
 
-#endif // TWINLITENET_ONNXRUNTIME_HPP_
+#endif // LANE_SEG_HPP_
