@@ -27,6 +27,7 @@ models/
 *.pt
 *.pth
 yolov8*.pt
+!TwinLiteNet-onnxruntime/models/best.onnx
 
 # Uploads
 uploads/
