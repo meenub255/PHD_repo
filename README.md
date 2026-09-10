@@ -163,21 +163,23 @@ The platform addresses perception and adaptive decision-making under uncertain e
 
 ### Rule Base
 
-| # | Lane | Obstacle | Density | Lighting | Steering | Speed | Description |
-|---|---|---|---|---|---|---|---|
-| 1 | far_left | — | — | — | hard_right | medium | Far Left → Correct Hard Right |
-| 2 | left | — | — | — | right | medium | Left Drift → Steer Right |
-| 3 | center | — | — | — | straight | fast | Lane Center → Hold Straight |
-| 4 | right | — | — | — | left | medium | Right Drift → Steer Left |
-| 5 | far_right | — | — | — | hard_left | medium | Far Right → Correct Hard Left |
-| 6 | — | critical | — | — | — | stop | CRITICAL OBSTACLE → EMERGENCY BRAKE |
-| 7 | — | close | — | — | — | slow | Obstacle Ahead → Reduce Speed |
-| 8 | center | close | — | — | left | slow | Centered Obstacle Close → Evasive Steer Left |
-| 9 | — | medium | — | — | — | medium | Traffic Ahead → Cruising Speed |
-| 10 | — | far | — | — | — | fast | Path Clear → Full Speed |
-| 11 | — | — | high | — | — | slow | Dense Traffic → Cautious Speed |
-| 12 | — | — | — | night | — | medium | Night Time → Reduced Max Speed |
-| 13 | — | medium | high | night | — | slow | Night + Dense Traffic → Very Cautious |
+The fuzzy inference system uses 13 rules across four input variables (Lane Deviation, Obstacle Distance, Traffic Density, Lighting) to produce two outputs (Steering Angle, Speed Control).
+
+| Rule | Condition | Action | Description |
+|---|---|---|---|
+| 1 | Lane is **far_left** | Steer **hard_right** (45°), Speed **medium** (60%) | Correct hard right when far left of lane |
+| 2 | Lane is **left** | Steer **right** (25°), Speed **medium** (60%) | Steer right to correct left drift |
+| 3 | Lane is **center** | Steer **straight** (0°), Speed **fast** (100%) | Hold straight when centered in lane |
+| 4 | Lane is **right** | Steer **left** (-25°), Speed **medium** (60%) | Steer left to correct right drift |
+| 5 | Lane is **far_right** | Steer **hard_left** (-45°), Speed **medium** (60%) | Correct hard left when far right of lane |
+| 6 | Obstacle is **critical** | Speed **stop** (0%) | Emergency brake for critical obstacle |
+| 7 | Obstacle is **close** | Speed **slow** (30%) | Reduce speed when obstacle is close |
+| 8 | Lane is **center** and Obstacle is **close** | Steer **left** (-25°), Speed **slow** (30%) | Evasive steer left for centered close obstacle |
+| 9 | Obstacle is **medium** | Speed **medium** (60%) | Maintain cruising speed for medium distance |
+| 10 | Obstacle is **far** | Speed **fast** (100%) | Full speed when path is clear |
+| 11 | Traffic Density is **high** | Speed **slow** (30%) | Cautious speed in dense traffic |
+| 12 | Lighting is **night** | Speed **medium** (60%) | Reduced speed at night |
+| 13 | Obstacle is **medium** and Density is **high** and Lighting is **night** | Speed **slow** (30%) | Very cautious in night + dense traffic |
 
 ---
 
