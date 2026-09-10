@@ -14,6 +14,8 @@ The platform addresses perception and adaptive decision-making under uncertain e
    - Relative depth estimation using monocular vision
    - Interval Type-2 Neuro-Fuzzy inference for collision avoidance steering and velocity commands
 
+   ![Objective 1 Pipeline](docs/objective1.png)
+
 2. **Objective 2 — Lane Monitoring & Vehicle Perception**:
    - Sliding-window polynomial curve fitting for lane detection
    - Perspective transform (Bird's-Eye View) and lane curvature analysis
