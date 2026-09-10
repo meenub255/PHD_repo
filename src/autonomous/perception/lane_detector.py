@@ -260,5 +260,5 @@ class LaneDetector:
                 return None
 
     def draw_lanes(self, frame: np.ndarray, left_curve=None, right_curve=None) -> np.ndarray:
-        """Return frame as-is (segmentation overlay removed)."""
+        """Return clean frame — detection runs internally, no overlay drawn."""
         return frame
