@@ -28,6 +28,72 @@ The platform addresses perception and adaptive decision-making under uncertain e
 
 ---
 
+## System Flowchart
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        INPUT (Video / Camera)                       │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                ┌──────────────┴──────────────┐
+                ▼                              ▼
+┌───────────────────────┐        ┌────────────────────────┐
+│  Obstacle Detection   │        │   Lane Segmentation    │
+│    (YOLOv8-World)     │        │   (ONNX Deep Learning) │
+└───────────┬───────────┘        └───────────┬────────────┘
+            │                                │
+            ▼                                ▼
+┌───────────────────────┐        ┌────────────────────────┐
+│  Multi-Object Tracking│        │  Connected Component   │
+│  (Hungarian Algorithm)│        │  Analysis & Ego Lane   │
+└───────────┬───────────┘        └───────────┬────────────┘
+            │                                │
+            ▼                                ▼
+┌───────────────────────┐        ┌────────────────────────┐
+│  Monocular Depth      │        │  Lane Deviation        │
+│  Estimation (MiDaS)   │        │  Calculation           │
+└───────────┬───────────┘        └───────────┬────────────┘
+            │                                │
+            └──────────────┬─────────────────┘
+                           ▼
+              ┌────────────────────────┐
+              │ Scene Understanding   │
+              │ • Risk Score          │
+              │ • Driving Mode        │
+              │ • Traffic Density     │
+              │ • Lighting Conditions │
+              └───────────┬────────────┘
+                          ▼
+              ┌────────────────────────┐
+              │ Interval Type-2       │
+              │ Neuro-Fuzzy Decision  │
+              │ System                │
+              │ (ANFIS Controller)    │
+              └───────────┬────────────┘
+                          ▼
+         ┌────────────────────────────────┐
+         │       Decision Output          │
+         │  ┌──────────┬────────┬───────┐ │
+         │  │ Steering │ Brake  │Throttle│ │
+         │  │  Angle   │ Status │ Speed │ │
+         │  └──────────┴────────┴───────┘ │
+         └────────────────┬───────────────┘
+                          ▼
+              ┌────────────────────────┐
+              │  Vehicle Controller   │
+              │  (Adaptive Navigation)│
+              └───────────┬────────────┘
+                          ▼
+              ┌────────────────────────┐
+              │  Flask Web Interface  │
+              │  • Live Video Feed    │
+              │  • Real-time Telemetry│
+              │  • Pipeline Monitoring│
+              └────────────────────────┘
+```
+
+---
+
 ## Directory Structure
 
 ```text
