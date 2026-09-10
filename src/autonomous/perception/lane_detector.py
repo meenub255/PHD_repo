@@ -111,12 +111,19 @@ class LaneDetector:
         best_right_x = w_orig * 2
 
         for i in range(1, num_labels):
-            if stats[i, cv2.CC_STAT_AREA] < 80:
+            if stats[i, cv2.CC_STAT_AREA] < 300:
                 continue
             y = stats[i, cv2.CC_STAT_TOP]
             ch = stats[i, cv2.CC_STAT_HEIGHT]
+            cw = stats[i, cv2.CC_STAT_WIDTH]
             # Must reach the lower road region
             if y + ch < roi_top:
+                continue
+            # Component must have reasonable vertical span (at least 15% of frame height)
+            if ch < h_orig * 0.15:
+                continue
+            # Component must be taller than wide (lane-like shape, not a blob)
+            if ch < cw * 0.5:
                 continue
             cent_x = centroids[i][0]
             # Ego left: component to the left of center, not too far left
@@ -150,32 +157,45 @@ class LaneDetector:
         left_bottom_x = None
         right_bottom_x = None
         fit_roi_top = int(h_orig * 0.58)
+        min_lane_separation = int(w_orig * 0.08)  # 8% of width minimum gap
 
         if ego_left_idx is not None:
             pts = np.column_stack(np.where(labels_full == ego_left_idx))[:, ::-1]  # (x, y)
-            if len(pts) >= 15:
+            if len(pts) >= 50:
                 vx, vy, x0, y0 = cv2.fitLine(pts, cv2.DIST_L2, 0, 0.01, 0.01).flatten()
                 slope = float(vy / (vx + 1e-6))
                 intercept = float(y0 - slope * x0)
-                if abs(slope) > 0.15:
-                    x1 = int(np.clip((roi_bottom - intercept) / slope, 0, cx))
-                    x2 = int(np.clip((fit_roi_top - intercept) / slope, 0, cx))
+                # Lane lines should be roughly vertical (slope magnitude > 0.5)
+                # and not near-horizontal (which would be noise)
+                if abs(slope) > 0.5 and abs(slope) < 10.0:
+                    x1 = int(np.clip((roi_bottom - intercept) / slope, 0, cx - min_lane_separation))
+                    x2 = int(np.clip((fit_roi_top - intercept) / slope, 0, cx - min_lane_separation))
                     left_bottom_x = x1
                     left_orig = np.array([[[x1, roi_bottom], [x2, fit_roi_top]]], dtype=np.int32)
                     left_curve, _ = self._stabilize_lines(frame.shape, left_orig, None)
 
         if ego_right_idx is not None:
             pts = np.column_stack(np.where(labels_full == ego_right_idx))[:, ::-1]
-            if len(pts) >= 15:
+            if len(pts) >= 50:
                 vx, vy, x0, y0 = cv2.fitLine(pts, cv2.DIST_L2, 0, 0.01, 0.01).flatten()
                 slope = float(vy / (vx + 1e-6))
                 intercept = float(y0 - slope * x0)
-                if abs(slope) > 0.15:
-                    x1 = int(np.clip((roi_bottom - intercept) / slope, cx, w_orig))
-                    x2 = int(np.clip((fit_roi_top - intercept) / slope, cx, w_orig))
+                # Lane lines should be roughly vertical (slope magnitude > 0.5)
+                # and not near-horizontal (which would be noise)
+                if abs(slope) > 0.5 and abs(slope) < 10.0:
+                    x1 = int(np.clip((roi_bottom - intercept) / slope, cx + min_lane_separation, w_orig))
+                    x2 = int(np.clip((fit_roi_top - intercept) / slope, cx + min_lane_separation, w_orig))
                     right_bottom_x = x1
                     right_orig = np.array([[[x1, roi_bottom], [x2, fit_roi_top]]], dtype=np.int32)
                     _, right_curve = self._stabilize_lines(frame.shape, None, right_orig)
+
+        # ── Reject if lines are too close (overlapping) ─────────────────────────
+        if left_curve is not None and right_curve is not None:
+            lb = left_curve.reshape(-1, 2)[0, 0]
+            rb = right_curve.reshape(-1, 2)[0, 0]
+            if abs(lb - rb) < min_lane_separation:
+                left_curve = None
+                right_curve = None
 
         # ── Deviation ─────────────────────────────────────────────────────────
         lane_center = cx
@@ -363,7 +383,7 @@ class LaneDetector:
             else:
                 self._right_miss_count = miss_count
 
-            if last_stable is not None and miss_count <= 6:
+            if last_stable is not None and miss_count <= 3:
                 return last_stable
             else:
                 if side == "left":
@@ -432,9 +452,63 @@ class LaneDetector:
           3. Crisp green boundary lines with a fine highlight edge.
         """
         annotated = frame.copy()
+        w = frame.shape[1]
+        min_separation = w * 0.05  # minimum 5% of width between left and right
+
+        # Validate curves are not near-horizontal (false detections)
+        def _is_valid_lane_curve(curve):
+            if curve is None:
+                return False
+            try:
+                pts = curve.reshape(-1, 2)
+                if len(pts) < 2:
+                    return False
+                # Check vertical span - lane lines should span a significant portion of the frame
+                y_span = abs(pts[-1, 1] - pts[0, 1])
+                if y_span < frame.shape[0] * 0.25:
+                    return False
+                # Check that line is not too horizontal
+                x_span = abs(pts[-1, 0] - pts[0, 0])
+                if x_span > y_span * 2:
+                    return False
+                return True
+            except Exception:
+                return False
+
+        left_valid = _is_valid_lane_curve(left_curve)
+        right_valid = _is_valid_lane_curve(right_curve)
+
+        # If only one side is valid, check if it's too far to one side (likely noise)
+        if left_valid and not right_valid:
+            try:
+                pts = left_curve.reshape(-1, 2)
+                if np.mean(pts[:, 0]) > w * 0.65:
+                    left_valid = False
+            except Exception:
+                pass
+        if right_valid and not left_valid:
+            try:
+                pts = right_curve.reshape(-1, 2)
+                if np.mean(pts[:, 0]) < w * 0.35:
+                    right_valid = False
+            except Exception:
+                pass
+
+        # Check if left and right curves overlap
+        curves_overlap = False
+        if left_valid and right_valid:
+            try:
+                left_pts = left_curve.reshape(-1, 2)
+                right_pts = right_curve.reshape(-1, 2)
+                left_bottom_x = left_pts[0, 0]
+                right_bottom_x = right_pts[0, 0]
+                if abs(left_bottom_x - right_bottom_x) < min_separation:
+                    curves_overlap = True
+            except Exception:
+                pass
 
         # ── 1. Translucent drivable-area carpet ────────────────────────────────
-        if left_curve is not None and right_curve is not None:
+        if left_valid and right_valid and not curves_overlap:
             try:
                 left_pts = left_curve.reshape(-1, 2)
                 right_pts = right_curve.reshape(-1, 2)
@@ -450,18 +524,5 @@ class LaneDetector:
             green_overlay = annotated.copy()
             green_overlay[self._last_lane_mask > 0] = (0, 255, 0)
             annotated = cv2.addWeighted(annotated, 0.22, green_overlay, 0.78, 0)
-
-        # ── 3. Boundary lines ──────────────────────────────────────────────────
-        if left_curve is not None:
-            cv2.polylines(annotated, [left_curve], isClosed=False,
-                          color=(0, 255, 0), thickness=4, lineType=cv2.LINE_AA)
-            cv2.polylines(annotated, [left_curve], isClosed=False,
-                          color=(210, 255, 210), thickness=1, lineType=cv2.LINE_AA)
-
-        if right_curve is not None:
-            cv2.polylines(annotated, [right_curve], isClosed=False,
-                          color=(0, 255, 0), thickness=4, lineType=cv2.LINE_AA)
-            cv2.polylines(annotated, [right_curve], isClosed=False,
-                          color=(210, 255, 210), thickness=1, lineType=cv2.LINE_AA)
 
         return annotated
