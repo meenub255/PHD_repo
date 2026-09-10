@@ -1,3 +1,4 @@
+"""Interval Type-2 Neuro-Fuzzy Logic System for autonomous vehicle navigation decision making."""
 from __future__ import annotations
 
 import numpy as np

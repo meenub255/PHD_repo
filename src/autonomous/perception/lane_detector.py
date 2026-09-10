@@ -1,16 +1,33 @@
+"""TwinLiteNet deep learning and classical computer-vision lane detection."""
+from collections import deque
+import logging
+from pathlib import Path
+
 import cv2
 import numpy as np
-from collections import deque
+
+try:
+    import onnxruntime as ort
+except ImportError:  # pragma: no cover
+    ort = None
+
 from ..config.settings import (
     GAMMA_NIGHT,
-    LANE_ROI_BOTTOM, LANE_ROI_TOP, LANE_ROI_LEFT, LANE_ROI_RIGHT,
+    LANE_ROI_BOTTOM,
+    LANE_ROI_LEFT,
+    LANE_ROI_RIGHT,
+    LANE_ROI_TOP,
     LANE_SMOOTHING,
     NIGHT_BRIGHTNESS_THRESHOLD,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class LaneDetector:
-    def __init__(self):
+    """Lane detector using TwinLiteNet ONNX model with classical Hough fallback."""
+
+    def __init__(self, model_path: str | Path | None = None):
         self._left_history = deque(maxlen=8)
         self._right_history = deque(maxlen=8)
         self._left_stable = None
@@ -18,8 +35,163 @@ class LaneDetector:
         self._left_miss_count = 0
         self._right_miss_count = 0
         self._smoothing_alpha = max(0.15, min(float(LANE_SMOOTHING), 0.35))
+        self._last_lane_mask = None
+        self._last_da_mask = None
+        self._last_labels = None
+        self._ego_left_idx = None
+        self._ego_right_idx = None
 
-    def detect_lanes(self, frame):
+        # Resolve TwinLiteNet ONNX model path
+        if model_path is None:
+            root_dir = Path(__file__).resolve().parents[3]
+            candidates = [
+                root_dir / "TwinLiteNet-onnxruntime" / "models" / "best.onnx",
+                root_dir / "models" / "best.onnx",
+                Path("TwinLiteNet-onnxruntime/models/best.onnx"),
+            ]
+            for c in candidates:
+                if c.exists():
+                    model_path = c
+                    break
+
+        self.session = None
+        self._input_name = None
+        if ort is not None and model_path is not None and Path(model_path).exists():
+            try:
+                self.session = ort.InferenceSession(
+                    str(model_path),
+                    providers=["CPUExecutionProvider"],
+                )
+                self._input_name = self.session.get_inputs()[0].name
+                logger.info("TwinLiteNet ONNX model loaded successfully from %s", model_path)
+            except Exception as e:
+                logger.warning("Failed to load TwinLiteNet ONNX model: %s", e)
+                self.session = None
+
+    def detect_lanes(self, frame: np.ndarray):
+        """Detect lanes using TwinLiteNet ONNX model, falling back to classical pipeline."""
+        if self.session is not None:
+            try:
+                return self._detect_lanes_twinlitenet(frame)
+            except Exception as e:
+                logger.warning("TwinLiteNet inference error: %s, falling back to classical", e)
+
+        return self._detect_lanes_classical(frame)
+
+    def _detect_lanes_twinlitenet(self, frame: np.ndarray):
+        """Run TwinLiteNet ONNX inference. Isolates only the vehicle's ego driving lane
+        using connected-component analysis so adjacent highway lanes are excluded."""
+        h_orig, w_orig = frame.shape[:2]
+        cx = w_orig // 2
+
+        # ── Preprocess ────────────────────────────────────────────────────────
+        img = cv2.resize(frame, (640, 360)).astype(np.float32) / 255.0
+        img = np.transpose(img, (2, 0, 1))[np.newaxis, ...]
+
+        outputs = self.session.run(None, {self._input_name: img})
+
+        # Store drivable-area mask
+        da_mask_360 = np.argmax(outputs[0][0], axis=0).astype(np.uint8) * 255
+        self._last_da_mask = cv2.resize(da_mask_360, (w_orig, h_orig))
+
+        # ── Full lane segmentation mask ────────────────────────────────────────
+        lane_mask_360 = np.argmax(outputs[1][0], axis=0).astype(np.uint8) * 255
+        full_lane_mask = cv2.resize(lane_mask_360, (w_orig, h_orig))
+
+        # ── Find ego lane components via connected components ─────────────────
+        # Only consider the lower part of the frame (actual road)
+        roi_top = int(h_orig * 0.40)
+        roi_bottom = h_orig
+
+        num_labels, labels_full, stats, centroids = cv2.connectedComponentsWithStats(full_lane_mask)
+
+        ego_left_idx = None
+        ego_right_idx = None
+        best_left_x = -1
+        best_right_x = w_orig * 2
+
+        for i in range(1, num_labels):
+            if stats[i, cv2.CC_STAT_AREA] < 80:
+                continue
+            y = stats[i, cv2.CC_STAT_TOP]
+            ch = stats[i, cv2.CC_STAT_HEIGHT]
+            # Must reach the lower road region
+            if y + ch < roi_top:
+                continue
+            cent_x = centroids[i][0]
+            # Ego left: component to the left of center, not too far left
+            if cent_x < cx and cent_x > w_orig * 0.10:
+                right_edge = stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH]
+                if right_edge > best_left_x:
+                    best_left_x = right_edge
+                    ego_left_idx = i
+            # Ego right: component to the right of center, not too far right
+            elif cent_x >= cx and cent_x < w_orig * 0.90:
+                left_edge = stats[i, cv2.CC_STAT_LEFT]
+                if left_edge < best_right_x:
+                    best_right_x = left_edge
+                    ego_right_idx = i
+
+        # Build ego-only pixel mask
+        ego_mask = np.zeros_like(full_lane_mask)
+        if ego_left_idx is not None:
+            ego_mask[labels_full == ego_left_idx] = 255
+        if ego_right_idx is not None:
+            ego_mask[labels_full == ego_right_idx] = 255
+
+        self._last_lane_mask = ego_mask  # Only ego lane pixels stored
+        self._last_labels = labels_full
+        self._ego_left_idx = ego_left_idx
+        self._ego_right_idx = ego_right_idx
+
+        # ── Fit lines on ego components ────────────────────────────────────────
+        left_curve = None
+        right_curve = None
+        left_bottom_x = None
+        right_bottom_x = None
+        fit_roi_top = int(h_orig * 0.58)
+
+        if ego_left_idx is not None:
+            pts = np.column_stack(np.where(labels_full == ego_left_idx))[:, ::-1]  # (x, y)
+            if len(pts) >= 15:
+                vx, vy, x0, y0 = cv2.fitLine(pts, cv2.DIST_L2, 0, 0.01, 0.01).flatten()
+                slope = float(vy / (vx + 1e-6))
+                intercept = float(y0 - slope * x0)
+                if abs(slope) > 0.15:
+                    x1 = int(np.clip((roi_bottom - intercept) / slope, 0, cx))
+                    x2 = int(np.clip((fit_roi_top - intercept) / slope, 0, cx))
+                    left_bottom_x = x1
+                    left_orig = np.array([[[x1, roi_bottom], [x2, fit_roi_top]]], dtype=np.int32)
+                    left_curve, _ = self._stabilize_lines(frame.shape, left_orig, None)
+
+        if ego_right_idx is not None:
+            pts = np.column_stack(np.where(labels_full == ego_right_idx))[:, ::-1]
+            if len(pts) >= 15:
+                vx, vy, x0, y0 = cv2.fitLine(pts, cv2.DIST_L2, 0, 0.01, 0.01).flatten()
+                slope = float(vy / (vx + 1e-6))
+                intercept = float(y0 - slope * x0)
+                if abs(slope) > 0.15:
+                    x1 = int(np.clip((roi_bottom - intercept) / slope, cx, w_orig))
+                    x2 = int(np.clip((fit_roi_top - intercept) / slope, cx, w_orig))
+                    right_bottom_x = x1
+                    right_orig = np.array([[[x1, roi_bottom], [x2, fit_roi_top]]], dtype=np.int32)
+                    _, right_curve = self._stabilize_lines(frame.shape, None, right_orig)
+
+        # ── Deviation ─────────────────────────────────────────────────────────
+        lane_center = cx
+        if left_bottom_x is not None and right_bottom_x is not None:
+            lane_center = (left_bottom_x + right_bottom_x) // 2
+        elif left_bottom_x is not None:
+            lane_center = left_bottom_x + (w_orig // 4)
+        elif right_bottom_x is not None:
+            lane_center = right_bottom_x - (w_orig // 4)
+
+        deviation_px = lane_center - cx
+        deviation = float(np.clip((deviation_px / (w_orig / 2.0)) * 100.0, -100.0, 100.0))
+        return left_curve, right_curve, deviation
+
+    def _detect_lanes_classical(self, frame: np.ndarray):
+        """Classical Canny + Hough transform fallback."""
         lane_image = np.copy(frame)
         canny_image = self.canny(lane_image)
         cropped_image = self.region_of_interest(canny_image)
@@ -142,98 +314,88 @@ class LaneDetector:
             frame_shape, right_orig, self._right_history,
             self._right_stable, "right"
         )
-        w = frame_shape[1]
-        cx = w // 2
-        if left_stable is not None:
-            left_stable[0][0][0] = min(int(left_stable[0][0][0]), cx)
-            left_stable[0][1][0] = min(int(left_stable[0][1][0]), cx)
-        if right_stable is not None:
-            right_stable[0][0][0] = max(int(right_stable[0][0][0]), cx)
-            right_stable[0][1][0] = max(int(right_stable[0][1][0]), cx)
-        if left_stable is not None and right_stable is not None:
-            lb, lt = int(left_stable[0][0][0]), int(left_stable[0][1][0])
-            rb, rt = int(right_stable[0][0][0]), int(right_stable[0][1][0])
-            if lb >= rb or lt >= rt:
-                left_stable = None
-                right_stable = None
-                self._left_stable = None
-                self._right_stable = None
-                self._left_history.clear()
-                self._right_history.clear()
+
         self._left_stable = left_stable
         self._right_stable = right_stable
+
         return left_stable, right_stable
 
-    def _stabilize_side(self, frame_shape, current_line, history, previous_line, side):
-        miss_attr = "_left_miss_count" if side == "left" else "_right_miss_count"
-        miss_count = getattr(self, miss_attr)
+    def _stabilize_side(self, frame_shape, current_line, history, last_stable, side):
         w = frame_shape[1]
+        cx = w // 2
 
         if current_line is not None:
-            if previous_line is not None:
-                prev_pts = np.asarray(previous_line[0], dtype=np.float32)
-                curr_pts = np.asarray(current_line[0], dtype=np.float32)
-                max_jump = w * 0.1
-                if (abs(curr_pts[0][0] - prev_pts[0][0]) > max_jump and
-                    abs(curr_pts[1][0] - prev_pts[1][0]) > max_jump):
-                    current_line = previous_line
-                else:
-                    history.append(curr_pts)
-                    setattr(self, miss_attr, 0)
+            coords = current_line[0]
+            x1, y1 = coords[0]
+            x2, y2 = coords[1]
+
+            if side == "left":
+                if x1 >= cx or x2 >= cx:
+                    current_line = None
             else:
-                history.append(np.asarray(current_line[0], dtype=np.float32))
-                setattr(self, miss_attr, 0)
+                if x1 <= cx or x2 <= cx:
+                    current_line = None
+
+        if current_line is not None:
+            if side == "left":
+                self._left_miss_count = 0
+            else:
+                self._right_miss_count = 0
+
+            history.append(current_line[0].copy())
+
+            avg_coords = np.mean(history, axis=0).astype(np.int32)
+
+            if last_stable is not None:
+                alpha = self._smoothing_alpha
+                smoothed = (
+                    alpha * avg_coords.astype(np.float64)
+                    + (1.0 - alpha) * last_stable[0].astype(np.float64)
+                ).astype(np.int32)
+                return np.array([smoothed], dtype=np.int32)
+            else:
+                return np.array([avg_coords], dtype=np.int32)
         else:
+            miss_count = self._left_miss_count if side == "left" else self._right_miss_count
             miss_count += 1
-            setattr(self, miss_attr, miss_count)
-            if miss_count > 4:
-                history.clear()
+            if side == "left":
+                self._left_miss_count = miss_count
+            else:
+                self._right_miss_count = miss_count
+
+            if last_stable is not None and miss_count <= 6:
+                return last_stable
+            else:
+                if side == "left":
+                    self._left_history.clear()
+                    self._left_stable = None
+                else:
+                    self._right_history.clear()
+                    self._right_stable = None
                 return None
-
-        if not history:
-            return current_line if current_line is not None else None
-
-        stacked = np.stack(list(history), axis=0)
-        ref = np.median(stacked, axis=0)
-
-        if previous_line is not None:
-            prev = np.asarray(previous_line[0], dtype=np.float32)
-            smoothed = (1.0 - self._smoothing_alpha) * prev + self._smoothing_alpha * ref
-        else:
-            smoothed = ref
-
-        h = frame_shape[0]
-        y1 = h
-        y2 = int(h * LANE_ROI_TOP)
-        x1 = int(np.clip(round(smoothed[0][0]), 0, w))
-        x2 = int(np.clip(round(smoothed[1][0]), 0, w))
-        return np.array([[[x1, y1], [x2, y2]]], dtype=np.int32)
 
     def canny(self, image):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        if float(np.mean(gray)) < NIGHT_BRIGHTNESS_THRESHOLD:
-            gray = self.enhance_low_light(gray)
+        mean_brightness = np.mean(gray)
+        if mean_brightness < NIGHT_BRIGHTNESS_THRESHOLD:
+            inv_gamma = 1.0 / GAMMA_NIGHT
+            table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in range(256)]).astype("uint8")
+            gray = cv2.LUT(gray, table)
+
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         return cv2.Canny(blur, 50, 150)
 
-    def enhance_low_light(self, gray):
-        adjusted = cv2.convertScaleAbs(gray, alpha=1.3, beta=18)
-        gamma = max(float(GAMMA_NIGHT), 1.0)
-        inv_gamma = 1.0 / gamma
-        lookup = np.array([(index / 255.0) ** inv_gamma * 255 for index in range(256)], dtype=np.uint8)
-        adjusted = cv2.LUT(adjusted, lookup)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        return clahe.apply(adjusted)
-
     def region_of_interest(self, image):
-        height = image.shape[0]
-        width = image.shape[1]
+        height, width = image.shape[:2]
         polygons = np.array([
-            [(int(width * LANE_ROI_LEFT), height),
-             (int(width * LANE_ROI_RIGHT), height),
-             (int(width * LANE_ROI_RIGHT), int(height * LANE_ROI_TOP)),
-             (int(width * LANE_ROI_LEFT), int(height * LANE_ROI_TOP))]
+            [
+                (int(width * LANE_ROI_LEFT), int(height * LANE_ROI_BOTTOM)),
+                (int(width * LANE_ROI_RIGHT), int(height * LANE_ROI_BOTTOM)),
+                (int(width * 0.55), int(height * LANE_ROI_TOP)),
+                (int(width * 0.45), int(height * LANE_ROI_TOP)),
+            ]
         ], dtype=np.int32)
+
         mask = np.zeros_like(image)
         cv2.fillPoly(mask, polygons, 255)
         return cv2.bitwise_and(image, mask)
@@ -260,12 +422,46 @@ class LaneDetector:
         deviation_px = lane_center - center_x
         return np.clip((deviation_px / (width / 2)) * 100, -100, 100)
 
-    def draw_lanes(self, frame, left_curve, right_curve):
-        overlay = frame.copy()
+    def draw_lanes(self, frame: np.ndarray, left_curve=None, right_curve=None) -> np.ndarray:
+        """Draw ONLY the vehicle's ego driving lane (no adjacent highway lanes).
 
+        Pipeline:
+          1. Soft green drivable carpet between ego left/right boundary lines.
+          2. Colour ONLY the ego lane segmentation pixels green (stored in
+             ``_last_lane_mask`` which now contains only ego-component pixels).
+          3. Crisp green boundary lines with a fine highlight edge.
+        """
+        annotated = frame.copy()
+
+        # ── 1. Translucent drivable-area carpet ────────────────────────────────
+        if left_curve is not None and right_curve is not None:
+            try:
+                left_pts = left_curve.reshape(-1, 2)
+                right_pts = right_curve.reshape(-1, 2)
+                poly_pts = np.vstack([left_pts, right_pts[::-1]])
+                poly_overlay = annotated.copy()
+                cv2.fillPoly(poly_overlay, [poly_pts], (0, 200, 70))
+                annotated = cv2.addWeighted(annotated, 0.82, poly_overlay, 0.18, 0)
+            except Exception:
+                pass
+
+        # ── 2. Ego lane segmentation pixels (already isolated) ─────────────────
+        if self._last_lane_mask is not None and np.any(self._last_lane_mask):
+            green_overlay = annotated.copy()
+            green_overlay[self._last_lane_mask > 0] = (0, 255, 0)
+            annotated = cv2.addWeighted(annotated, 0.22, green_overlay, 0.78, 0)
+
+        # ── 3. Boundary lines ──────────────────────────────────────────────────
         if left_curve is not None:
-            cv2.polylines(overlay, [left_curve], isClosed=False, color=(0, 255, 0), thickness=3)
-        if right_curve is not None:
-            cv2.polylines(overlay, [right_curve], isClosed=False, color=(0, 255, 0), thickness=3)
+            cv2.polylines(annotated, [left_curve], isClosed=False,
+                          color=(0, 255, 0), thickness=4, lineType=cv2.LINE_AA)
+            cv2.polylines(annotated, [left_curve], isClosed=False,
+                          color=(210, 255, 210), thickness=1, lineType=cv2.LINE_AA)
 
-        return cv2.addWeighted(overlay, 0.6, frame, 0.4, 0)
+        if right_curve is not None:
+            cv2.polylines(annotated, [right_curve], isClosed=False,
+                          color=(0, 255, 0), thickness=4, lineType=cv2.LINE_AA)
+            cv2.polylines(annotated, [right_curve], isClosed=False,
+                          color=(210, 255, 210), thickness=1, lineType=cv2.LINE_AA)
+
+        return annotated

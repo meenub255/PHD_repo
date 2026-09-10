@@ -1,3 +1,4 @@
+"""Scene understanding synthesizing lane tracking, obstacles, and depth observations into situational risk metrics."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

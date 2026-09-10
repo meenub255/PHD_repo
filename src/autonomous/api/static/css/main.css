@@ -1,0 +1,442 @@
+/*
+ * Perception Intelligence for Autonomous Vehicles
+ * Consolidated stylesheet — shared across all pages.
+ */
+
+/* ===== Google Font ===== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+/* ===== Design Tokens ===== */
+:root {
+  font-size: 12px;
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --orange: #ff8c00;
+}
+
+/* ===== Reset ===== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  min-height: 100vh;
+  color: #1a1a1a;
+  background: #ffffff;
+  line-height: 1.7;
+}
+
+/* ===== Layout ===== */
+.page {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+.page--narrow { max-width: 1200px; }
+.page--wide   { max-width: 1400px; }
+
+/* ===== Back Link ===== */
+.back-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--orange); text-decoration: none;
+  font-size: 0.88rem; font-weight: 600;
+  margin-bottom: 24px; letter-spacing: 0.04em; text-transform: uppercase;
+  border: 2px solid var(--orange); padding: 8px 16px; border-radius: 10px;
+  transition: background 0.2s, color 0.2s;
+}
+.back-link:hover { background: var(--orange); color: #fff; }
+.back-link--sm {
+  font-size: 0.75rem;
+  margin-bottom: 20px;
+  border-width: 1.5px;
+  padding: 5px 12px;
+  border-radius: 8px;
+}
+
+/* ===== Typography ===== */
+h1 {
+  font-size: clamp(1.1rem, 2.2vw, 1.6rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--orange);
+  margin-bottom: 6px;
+}
+
+.subtitle {
+  color: #555;
+  font-size: 1rem;
+  margin-bottom: 28px;
+  max-width: 720px;
+}
+
+.subtitle--bold {
+  color: #000;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+/* ===== Two-column Layout ===== */
+.main-layout {
+  display: grid;
+  grid-template-columns: 40% 60%;
+  gap: 24px;
+  align-items: start;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 40px;
+  align-items: start;
+}
+
+.layout--compact { gap: 20px; }
+
+@media (max-width: 900px) { .main-layout { grid-template-columns: 1fr; } }
+@media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+
+/* ===== Video Panel ===== */
+.video-panel {
+  border: 2px solid #ddd;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+  position: relative;
+  margin-bottom: 20px;
+  transition: border-color 0.3s;
+}
+.video-panel--static { position: relative; border-radius: 16px; margin-bottom: 20px; }
+.video-panel img {
+  width: 100%; height: auto; display: block;
+  object-fit: contain; max-height: 70vh;
+}
+.video-panel video {
+  width: 100%; height: auto; display: block; border-radius: 14px;
+}
+
+.video-badge {
+  position: absolute; left: 14px; top: 14px;
+  padding: 6px 14px; border-radius: 999px;
+  background: rgba(255,140,0,0.85); color: #fff;
+  font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+
+/* ===== Upload Row ===== */
+.upload-row {
+  display: flex; gap: 12px; margin-top: 18px; margin-bottom: 14px;
+  align-items: center; flex-wrap: wrap; position: relative; z-index: 10;
+  clear: both;
+}
+.upload-row input[type="file"] { display: none; }
+.upload-row button {
+  padding: 10px 18px; border-radius: 10px; border: 0; cursor: pointer;
+  background: var(--orange); color: #fff; font-weight: 700; font-size: 0.88rem;
+  transition: opacity 0.2s;
+}
+.upload-row button:hover { opacity: 0.85; }
+.upload-hint { color: #888; font-size: 0.85rem; }
+
+/* ======================== */
+/* PIPELINE STEP CARDS      */
+/* ======================== */
+.pipeline-panel {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+.pipeline-panel .step-arrow { display: none; }
+
+.step-card {
+  display: flex;
+  flex-direction: column;
+  border: 2px solid #ddd; border-radius: 10px; padding: 8px 10px;
+  background: #fff;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.step-card .step-detail { margin-top: auto; }
+.step-card:last-child { grid-column: 1 / -1; }
+.step-card--no-span:last-child { grid-column: auto; }
+
+.step-card.active {
+  border-color: var(--orange);
+  box-shadow: 0 2px 12px rgba(255,140,0,0.12);
+}
+
+.step-card h3 {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--orange); margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.step-card h3 .step-num {
+  width: 18px; height: 18px; border-radius: 5px; background: var(--orange);
+  color: #fff; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.55rem; font-weight: 700; flex: 0 0 auto;
+}
+.step-card .step-status {
+  font-size: 0.7rem; font-weight: 600; color: #1a1a1a; margin-bottom: 0;
+}
+.step-card .step-detail {
+  font-size: 0.62rem; color: #666; line-height: 1.3;
+}
+
+.step-arrow {
+  display: flex; justify-content: center; padding: 6px 0;
+  color: var(--orange); font-size: 1rem; font-weight: 700;
+}
+
+@keyframes pulse-border {
+  0%   { border-color: #ddd; }
+  50%  { border-color: var(--orange); box-shadow: 0 0 12px rgba(255,140,0,0.15); }
+  100% { border-color: #ddd; }
+}
+.step-card.processing { animation: pulse-border 1s ease-in-out infinite; }
+
+/* ======================== */
+/* OVERVIEW OBJECTIVE CARDS */
+/* ======================== */
+.objectives-table {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  max-width: 760px;
+}
+.objective-cell {
+  border: 2px solid #ddd;
+  border-radius: 14px;
+  padding: 20px 18px;
+  background: #fff;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s, box-shadow 0.3s, transform 0.35s cubic-bezier(.4,0,.2,1);
+}
+.objective-cell:hover {
+  border-color: var(--orange);
+  box-shadow: 0 8px 32px rgba(255,140,0,0.18), 0 2px 8px rgba(0,0,0,0.06);
+  transform: translateY(-5px);
+}
+
+/* Bounding box draw-in corners */
+.objective-cell::before,
+.objective-cell::after {
+  content: '';
+  position: absolute;
+  width: 0; height: 0;
+  border: 2px solid var(--orange);
+  transition: width 0.35s ease, height 0.35s ease;
+  pointer-events: none;
+}
+.objective-cell::before {
+  top: 0; left: 0;
+  border-right: none; border-bottom: none;
+  border-radius: 14px 0 0 0;
+}
+.objective-cell::after {
+  bottom: 0; right: 0;
+  border-left: none; border-top: none;
+  border-radius: 0 0 14px 0;
+}
+.objective-cell:hover::before,
+.objective-cell:hover::after {
+  width: 50%; height: 50%;
+}
+
+/* Reticle ring on number */
+.num-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.num-ring::before {
+  content: '';
+  position: absolute;
+  width: 38px; height: 38px;
+  border: 1.5px dashed rgba(255,140,0,0.35);
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.objective-cell:hover .num-ring::before {
+  opacity: 1;
+  animation: rotateReticle 3s linear infinite;
+}
+@keyframes rotateReticle { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+
+.objective-cell h2 {
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--orange);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.objective-cell h2 .num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border-radius: 8px;
+  background: var(--orange);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  flex: 0 0 auto;
+  position: relative; z-index: 1;
+  transition: transform 0.3s cubic-bezier(.4,0,.2,1), box-shadow 0.3s;
+}
+.objective-cell:hover h2 .num {
+  transform: scale(1.18);
+  box-shadow: 0 0 12px rgba(255,140,0,0.4);
+}
+.objective-cell p {
+  color: #1a1a1a;
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+/* "Open Pipeline" button */
+.steps-toggle {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--orange);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--orange);
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.steps-toggle:hover { background: var(--orange); color: #fff; }
+
+/* Workflow card pulsing border */
+.workflow-cell {
+  border: 2px solid var(--orange) !important;
+  animation: workflowPulse 3s ease-in-out infinite;
+}
+@keyframes workflowPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,140,0,0); }
+  50% { box-shadow: 0 0 20px 2px rgba(255,140,0,0.2); }
+}
+
+@media (max-width: 640px) {
+  .objectives-table { grid-template-columns: 1fr; max-width: 100%; }
+}
+
+/* ======================== */
+/* COMPLETE WORKFLOW PAGE   */
+/* ======================== */
+.section-title {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--orange);
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #eee;
+}
+
+.decision-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.decision-chip {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 2px solid #ddd;
+  background: #fff;
+  text-align: center;
+  transition: border-color 0.3s;
+}
+.decision-chip:hover { border-color: var(--orange); }
+.decision-chip .chip-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #888;
+  margin-bottom: 4px;
+}
+.decision-chip .chip-value {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--orange);
+}
+
+.status-info {
+  color: #555;
+  font-size: 0.7rem;
+  line-height: 1.6;
+  margin-bottom: 4px;
+}
+.status-info strong { color: #1a1a1a; }
+
+.safe-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #fff8f0, #fff);
+  border: 2px solid var(--orange);
+  margin-bottom: 12px;
+}
+.safe-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--orange);
+  box-shadow: 0 0 10px rgba(255,140,0,0.5);
+}
+.safe-banner p {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.7rem;
+  color: #1a1a1a;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+.metric {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f9f6f2;
+  border: 1px solid #eee;
+}
+.metric span {
+  display: block;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #888;
+  margin-bottom: 4px;
+}
+.metric strong {
+  font-size: 0.7rem;
+  color: #1a1a1a;
+}
+
+/* Active Fuzzy Rule Highlight */
+.fuzzy-rule-display {
+  font-size: 1.3rem;
+  line-height: 1.4;
+}
+
+#active-rule,
+.fuzzy-rule-text {
+  color: var(--orange, #ff8c00) !important;
+  font-weight: 800 !important;
+  font-size: 1.45rem !important;
+}
+

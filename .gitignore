@@ -24,6 +24,9 @@ logs/
 
 # Model weights (large files)
 models/
+*.pt
+*.pth
+yolov8*.pt
 
 # Uploads
 uploads/

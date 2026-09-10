@@ -1,3 +1,4 @@
+"""Multi-object tracking using Hungarian algorithm assignment over bounding box IoU."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

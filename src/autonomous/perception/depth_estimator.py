@@ -1,3 +1,4 @@
+"""Monocular depth estimation pipeline using MiDaS or classical geometric heuristics."""
 from __future__ import annotations
 
 from dataclasses import dataclass

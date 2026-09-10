@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Complete Workflow - Perception Intelligence for Autonomous Vehicles{% endblock %}
+
+{% block body %}
+<div class="page page--wide">
+  <a class="back-link back-link--sm" href="{{ url_for('overview') }}">&larr; Back to Overview</a>
+
+  <h1>Complete Workflow</h1>
+
+  <div class="layout layout--compact">
+    <div>
+      <h2 class="section-title">Final Decision</h2>
+      <div class="decision-grid">
+        <div class="decision-chip">
+          <div class="chip-label">Steering</div>
+          <div class="chip-value" id="steering-value">0.0&deg;</div>
+        </div>
+        <div class="decision-chip">
+          <div class="chip-label">Brake</div>
+          <div class="chip-value" id="brake-value">OFF</div>
+        </div>
+        <div class="decision-chip">
+          <div class="chip-label">Throttle</div>
+          <div class="chip-value" id="throttle-value">0.0%</div>
+        </div>
+      </div>
+      <p class="status-info fuzzy-rule-display" style="margin: 16px 0 10px 0;">
+        <span style="color: var(--orange, #ff8c00); font-size: 1.3rem; font-weight: 700;">Active Fuzzy Rule:</span>
+        <strong id="active-rule" class="fuzzy-rule-text" style="color: var(--orange, #ff8c00); font-size: 1.45rem; font-weight: 800; margin-left: 6px;">Analyzing...</strong>
+      </p>
+      <p class="status-info">Decision confidence: <strong id="decision-confidence">0.00</strong></p>
+
+      <h2 class="section-title" style="margin-top: 20px;">Autonomous Vehicle Movement</h2>
+      <div class="safe-banner">
+        <div class="safe-dot"></div>
+        <p id="safe-status">Safe Navigation Status</p>
+      </div>
+      <p class="status-info" id="scene-recommendation">Waiting for telemetry...</p>
+      <div class="metric-grid">
+        <div class="metric"><span>Lane Deviation</span><strong id="lane-deviation">0.0%</strong></div>
+        <div class="metric"><span>Obstacle Distance</span><strong id="obstacle-distance">0.0</strong></div>
+        <div class="metric"><span>Scene Risk</span><strong id="scene-risk">0.0</strong></div>
+        <div class="metric"><span>Driving Mode</span><strong id="driving-mode">normal</strong></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="video-panel video-panel--static" style="margin-bottom: 22px; position: relative;">
+        <div class="video-badge">Live Processing</div>
+        <img src="{{ url_for('video_feed') }}" alt="video feed">
+      </div>
+      <div class="upload-row" style="margin-top: 18px; display: flex; align-items: center; gap: 12px; clear: both; position: relative; z-index: 10;">
+        <form id="upload-form" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+          <input id="video-input" type="file" name="file" accept="video/*,image/*">
+          <button type="button" id="load-btn" style="display: inline-block;">Load Media</button>
+        </form>
+        <span class="upload-hint" id="upload-hint">Upload a video or image to start processing</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function formatNumber(value, digits) {
+    digits = digits || 1;
+    var number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(digits) : "0.0";
+  }
+  function getBrakeState(vehicleStatus, scene) {
+    if ((scene && scene.driving_mode === "emergency") || (vehicleStatus && vehicleStatus.brake_active)) return "ON";
+    return "OFF";
+  }
+  function getStatusLabel(scene) {
+    if (!scene) return "Safe Navigation Status";
+    if (scene.driving_mode === "emergency") return "Emergency Stop";
+    if (scene.driving_mode === "cautious") return "Cautious Navigation";
+    if (scene.driving_mode === "degraded") return "Degraded Visibility";
+    return "Safe Navigation Status";
+  }
+  function renderTelemetry(p) {
+    var scene = p.scene || {};
+    var status = p.vehicle_status || {};
+    document.getElementById("steering-value").innerHTML = formatNumber(p.steering_angle, 1) + "&deg;";
+    document.getElementById("brake-value").textContent = getBrakeState(status, scene);
+    document.getElementById("throttle-value").textContent = formatNumber(p.speed_control, 1) + "%";
+    document.getElementById("active-rule").textContent = p.active_rule || "Analyzing...";
+    document.getElementById("decision-confidence").textContent = formatNumber(p.decision_confidence, 2);
+    document.getElementById("safe-status").textContent = getStatusLabel(scene);
+    document.getElementById("scene-recommendation").textContent = scene.recommendation || "Waiting for telemetry...";
+    document.getElementById("lane-deviation").textContent = formatNumber(p.lane_deviation, 1) + "%";
+    document.getElementById("obstacle-distance").textContent = formatNumber(p.obstacle_distance, 1);
+    document.getElementById("scene-risk").textContent = formatNumber(scene.risk_score, 1);
+    document.getElementById("driving-mode").textContent = scene.driving_mode || "normal";
+  }
+  var videoInput = document.getElementById("video-input");
+  var uploadHint = document.getElementById("upload-hint");
+  document.getElementById("load-btn").addEventListener("click", function() { videoInput.click(); });
+  videoInput.addEventListener("change", function() {
+    if (!videoInput.files || !videoInput.files.length) return;
+    uploadHint.textContent = "Uploading " + videoInput.files[0].name + "...";
+    document.getElementById("upload-form").submit();
+  });
+  function refreshTelemetry() {
+    fetch("{{ url_for('telemetry') }}").then(function(r){ return r.json(); }).then(function(payload) {
+      renderTelemetry(payload);
+    }).catch(function(e) {});
+  }
+  refreshTelemetry();
+  setInterval(refreshTelemetry, 1000);
+</script>
+{% endblock %}

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Objective 3 - Unified Perception Intelligence Framework{% endblock %}
+
+{% block body %}
+<div class="page page--narrow">
+  <a class="back-link" href="{{ url_for('overview') }}">&larr; Back to Overview</a>
+  <h1>Objective 3</h1>
+  <p class="subtitle">Unified Perception Intelligence Framework &bull; Depth Estimation &bull; Geometric Computation &bull; Context-Aware Perception &bull; Spatial Understanding &bull; Uncertainty Handling &bull; Neuro-Fuzzy Decision Systems</p>
+
+  <div class="layout">
+    <div class="pipeline-panel">
+      <div class="step-card step-card--no-span" id="step1">
+        <h3><span class="step-num">1</span> Monocular Depth Estimation</h3>
+        <div class="step-status" id="s1-status">Waiting...</div>
+      </div>
+      <div class="step-card step-card--no-span" id="step2">
+        <h3><span class="step-num">2</span> Geometric Computation</h3>
+        <div class="step-status" id="s2-status">Waiting...</div>
+      </div>
+      <div class="step-card step-card--no-span" id="step3">
+        <h3><span class="step-num">3</span> Context-Aware Perception</h3>
+        <div class="step-status" id="s3-status">Waiting...</div>
+      </div>
+      <div class="step-card step-card--no-span" id="step4">
+        <h3><span class="step-num">4</span> Spatial Understanding</h3>
+        <div class="step-status" id="s4-status">Waiting...</div>
+      </div>
+      <div class="step-card step-card--no-span" id="step5">
+        <h3><span class="step-num">5</span> Uncertainty Handling</h3>
+        <div class="step-status" id="s5-status">Waiting...</div>
+      </div>
+      <div class="step-card step-card--no-span" id="step6">
+        <h3><span class="step-num">6</span> Neuro-Fuzzy Decision Systems</h3>
+        <div class="step-status" id="s6-status">Waiting...</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="video-panel video-panel--static">
+        <div class="video-badge">Live Processing</div>
+        <img src="{{ url_for('obj3_video_feed') }}" alt="video feed">
+      </div>
+      <div class="upload-row">
+        <form id="upload-form" action="{{ url_for('obj3_upload') }}" method="post" enctype="multipart/form-data">
+          <input id="video-input" type="file" name="file" accept="video/*,image/*">
+          <button type="button" id="load-btn">Load Media</button>
+        </form>
+        <span class="upload-hint" id="upload-hint">Upload a video or image to start processing</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var loadBtn = document.getElementById("load-btn");
+  var videoInput = document.getElementById("video-input");
+  var hint = document.getElementById("upload-hint");
+  loadBtn.addEventListener("click", function() { videoInput.click(); });
+  videoInput.addEventListener("change", function() {
+    if (!videoInput.files || !videoInput.files.length) return;
+    hint.textContent = "Uploading " + videoInput.files[0].name + "...";
+    document.getElementById("upload-form").submit();
+  });
+
+  function fmt(v, d) { var n = Number(v); return Number.isFinite(n) ? n.toFixed(d || 1) : "0.0"; }
+
+  function refreshObj3() {
+    fetch("{{ url_for('obj3_telemetry') }}").then(function(r){ return r.json(); }).then(function(p) {
+      var scene = p.scene || {};
+      var depth_conf = p.depth_confidence || 0;
+      var decision_conf = p.decision_confidence || 0;
+      var active_rule = p.active_rule || "---";
+
+      document.getElementById("s1-status").textContent = "Depth confidence " + fmt(depth_conf, 2) + " | " + (p.depth_backend || "none");
+
+      document.getElementById("s2-status").textContent = "Obstacle distance " + fmt(p.obstacle_distance, 1) + "m | Bearing " + fmt(p.obstacle_bearing, 1) + "\u00b0";
+
+      document.getElementById("s3-status").textContent = "Lighting " + fmt(p.lighting_score, 0) + " | Traffic density " + fmt(p.traffic_density, 1);
+
+      document.getElementById("s4-status").textContent = "Detections " + (p.raw_detections || 0) + " | Tracks " + (p.detections || 0);
+
+      document.getElementById("s5-status").textContent = "Obstacle uncertainty " + fmt(p.obstacle_uncertainty, 2) + " | Scene risk " + fmt(scene.risk_score, 1);
+
+      document.getElementById("s6-status").textContent = active_rule + " | Confidence " + fmt(decision_conf, 2);
+
+      var cards = ["step1", "step2", "step3", "step4", "step5", "step6"];
+      cards.forEach(function(c) { document.getElementById(c).classList.remove("active", "processing"); });
+      if (p.raw_detections > 0 || depth_conf > 0) { document.getElementById("step1").classList.add("active", "processing"); }
+      if (p.obstacle_distance > 0) { document.getElementById("step2").classList.add("active", "processing"); }
+      if (p.lighting_score > 0) { document.getElementById("step3").classList.add("active", "processing"); }
+      if (p.raw_detections > 0) { document.getElementById("step4").classList.add("active", "processing"); }
+      if (p.obstacle_uncertainty > 0 || scene.risk_score > 0) { document.getElementById("step5").classList.add("active", "processing"); }
+      if (decision_conf > 0) { document.getElementById("step6").classList.add("active", "processing"); }
+    }).catch(function(){});
+  }
+  refreshObj3();
+  setInterval(refreshObj3, 1000);
+</script>
+{% endblock %}

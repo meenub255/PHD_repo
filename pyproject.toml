@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autonomous-perception-fuzzy"
+version = "0.1.0"
+description = "Perception Intelligence for Autonomous Vehicles using Monocular Vision and Deep Learning with Interval Type-2 Neuro-Fuzzy Logic"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "flask>=2.3.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0,<2.0.0",
+    "scipy>=1.10.0",
+    "ultralytics>=8.0.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "pillow>=9.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

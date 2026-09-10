@@ -1,3 +1,6 @@
+"""Low-level vehicle actuator controller managing steering angle, velocity, and braking state."""
+
+
 class VehicleController:
     def __init__(self, mode='simulation'):
         self.mode = mode

@@ -1,3 +1,4 @@
+"""Adaptive autonomous vehicle navigator integrating vision pipelines and fuzzy control."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -154,7 +155,6 @@ class AdaptiveNavigator:
             )
 
         annotated = self.lane_detector.draw_lanes(frame, left_line, right_line)
-        annotated = self.obstacle_detector.draw_detections(annotated, display_detections)
         annotated = self._draw_tracks(annotated, tracks)
 
         if draw_hud:
@@ -360,24 +360,88 @@ class AdaptiveNavigator:
         return frame
 
     def _draw_tracks(self, frame: np.ndarray, tracks) -> np.ndarray:
+        """Draw clean pill-badge labels for each tracked vehicle.
+
+        Features:
+        - Single badge per vehicle (no separate detection + tracking overlay).
+        - Dark semi-transparent pill background with colour-coded border.
+        - White text: ``ID {id} | {LABEL}``.
+        - White corner accent marks on each bounding box corner.
+        - Anti-collision: badges are stacked vertically when they overlap.
+        """
         overlay = frame.copy()
-        for track in tracks:
+        placed: list[tuple[int, int, int, int]] = []  # (bx1, by1, bx2, by2) of drawn badges
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.42
+        font_thickness = 1
+        pad_x, pad_y = 6, 4
+
+        # Process front-to-back (largest y2 first) so foreground labels are placed first
+        for track in sorted(tracks, key=lambda t: t.bbox[3], reverse=True):
             x1, y1, x2, y2 = map(int, track.bbox)
-            color = (0, 255, 0) if not track.is_dynamic else (0, 128, 255)
-            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 2)
-            label = f"ID {track.track_id} {track.label}"
-            if track.is_dynamic:
-                label += " dyn"
+            # Green for static, amber-blue for dynamic
+            color = (0, 230, 118) if not track.is_dynamic else (0, 140, 255)
+
+            # ── Bounding box ───────────────────────────────────────────────────
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 2, cv2.LINE_AA)
+
+            # ── Corner accent ticks ────────────────────────────────────────────
+            d = max(6, min(14, (x2 - x1) // 4, (y2 - y1) // 4))
+            for px, py, dx, dy in [
+                (x1, y1, d, 0), (x1, y1, 0, d),
+                (x2, y1, -d, 0), (x2, y1, 0, d),
+                (x1, y2, d, 0), (x1, y2, 0, -d),
+                (x2, y2, -d, 0), (x2, y2, 0, -d),
+            ]:
+                cv2.line(overlay, (px, py), (px + dx, py + dy), (255, 255, 255), 2, cv2.LINE_AA)
+
+            # ── Badge geometry ─────────────────────────────────────────────────
+            label_text = f"ID {track.track_id} | {track.label.upper()}"
+            (tw, th), _ = cv2.getTextSize(label_text, font, font_scale, font_thickness)
+            bw = tw + pad_x * 2
+            bh = th + pad_y * 2
+
+            # Default: above the top edge of the bbox
+            bx1 = x1
+            by1 = y1 - bh - 5
+            if by1 < 2:
+                by1 = y1 + 5  # Flip below if too close to top
+            bx2 = bx1 + bw
+            by2 = by1 + bh
+
+            # ── Anti-collision: shift badge vertically until no overlap ────────
+            for _ in range(8):
+                collision = any(
+                    not (bx2 < px1 or bx1 > px2 or by2 < py1 or by1 > py2)
+                    for px1, py1, px2, py2 in placed
+                )
+                if not collision:
+                    break
+                by1 -= bh + 3
+                by2 = by1 + bh
+                if by1 < 2:
+                    # Ran out of room above — stack below instead
+                    by1 = y2 + 5 + (bh + 3) * len(placed)
+                    by2 = by1 + bh
+                    break
+
+            placed.append((bx1, by1, bx2, by2))
+
+            # ── Draw pill badge ────────────────────────────────────────────────
+            # Dark translucent background
+            badge_bg = overlay.copy()
+            cv2.rectangle(badge_bg, (bx1, by1), (bx2, by2), (12, 16, 22), -1)
+            overlay = cv2.addWeighted(badge_bg, 0.88, overlay, 0.12, 0)
+            # Coloured 1-px border
+            cv2.rectangle(overlay, (bx1, by1), (bx2, by2), color, 1, cv2.LINE_AA)
+            # White label text
             cv2.putText(
-                overlay,
-                label,
-                (x1, max(18, y1 - 22)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
-                color,
-                2,
-                cv2.LINE_AA,
+                overlay, label_text,
+                (bx1 + pad_x, by1 + pad_y + th),
+                font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA,
             )
+
         return overlay
 
     def _build_drivable_polygon(self, frame_shape, left_line, right_line):

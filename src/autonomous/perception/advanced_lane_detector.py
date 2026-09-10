@@ -1,3 +1,4 @@
+"""Advanced lane detection with bird's-eye view perspective transformation and polynomial fitting."""
 import sys
 import os
 import cv2

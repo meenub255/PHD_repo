@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Perception Intelligence for Autonomous Vehicles using Monocular Vision and Deep Learning{% endblock %}
+
+{% block body %}
+<div class="page">
+  <h1>Intelligence Perception for Autonomous Vehicles using Monocular Vision and Deep Learning Techniques</h1>
+  <p class="subtitle subtitle--bold">Project Overview</p>
+
+  <div class="main-layout">
+    <div class="objectives-table">
+      <div class="objective-cell" onclick="window.location.href='{{ url_for('objective1') }}'">
+        <h2><span class="num-ring"><span class="num">1</span></span> Objective 1</h2>
+        <p>To develop an intelligent autonomous vehicle navigation framework for obstacle detection and environmental understanding using monocular vision and deep learning techniques. The proposed framework focuses on detecting static and dynamic obstacles, improving path awareness, and supporting adaptive navigation under complex traffic environments.</p>
+        <div class="steps-toggle">Open Pipeline &rarr;</div>
+      </div>
+      <div class="objective-cell" onclick="window.location.href='{{ url_for('objective2') }}'">
+        <h2><span class="num-ring"><span class="num">2</span></span> Objective 2</h2>
+        <p>To design a vision-based lane and vehicle perception framework using YOLOv8-seg and neuro-fuzzy reasoning for accurate lane monitoring and intelligent driving assistance. The framework focuses on improving lane boundary detection, surrounding vehicle perception, and adaptive decision-making under challenging scenarios.</p>
+        <div class="steps-toggle">Open Pipeline &rarr;</div>
+      </div>
+      <div class="objective-cell" onclick="window.location.href='{{ url_for('objective3') }}'">
+        <h2><span class="num-ring"><span class="num">3</span></span> Objective 3</h2>
+        <p>To develop a unified perception intelligence framework that integrates monocular depth estimation, geometric computation, contextual understanding, and neuro-fuzzy decision systems for real-time autonomous driving applications.</p>
+        <div class="steps-toggle">Open Pipeline &rarr;</div>
+      </div>
+      <div class="objective-cell workflow-cell" onclick="window.location.href='{{ url_for('complete_workflow') }}'">
+        <h2><span class="num-ring"><span class="num">&#8635;</span></span> Complete Workflow</h2>
+        <p>End-to-end unified perception intelligence pipeline combining obstacle detection, lane monitoring, depth estimation, geometric computation, contextual understanding, and neuro-fuzzy decision making for autonomous vehicle navigation.</p>
+        <div class="steps-toggle">Open Workflow &rarr;</div>
+      </div>
+    </div>
+
+    <div class="video-panel">
+      <video autoplay muted loop playsinline style="width:100%;height:auto;display:block;border-radius:14px;">
+        <source src="{{ url_for('demo_video') }}" type="video/mp4">
+      </video>
+    </div>
+  </div>
+</div>
+{% endblock %}

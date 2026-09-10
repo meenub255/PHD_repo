@@ -1,3 +1,4 @@
+"""YOLOv8-World based open-vocabulary obstacle detection module."""
 from __future__ import annotations
 
 from dataclasses import dataclass
