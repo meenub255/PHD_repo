@@ -102,6 +102,85 @@ The platform addresses perception and adaptive decision-making under uncertain e
 
 ---
 
+## Fuzzy Logic Rules
+
+### Input Variables & Membership Functions
+
+**Lane Deviation** (distance from lane center):
+
+| Linguistic Term | Center | Spread | Width |
+|---|---|---|---|
+| far_left | -100 | 15 | 25 |
+| left | -50 | 15 | 25 |
+| center | 0 | 10 | 20 |
+| right | 50 | 15 | 25 |
+| far_right | 100 | 15 | 25 |
+
+**Obstacle Distance** (meters to nearest obstacle):
+
+| Linguistic Term | Center | Spread | Width |
+|---|---|---|---|
+| critical | 0 | 10 | 20 |
+| close | 30 | 10 | 20 |
+| medium | 60 | 15 | 25 |
+| far | 100 | 20 | 30 |
+
+**Traffic Density** (number of nearby objects):
+
+| Linguistic Term | Center | Spread | Width |
+|---|---|---|---|
+| low | 0 | 2 | 4 |
+| medium | 5 | 2 | 3 |
+| high | 10 | 3 | 5 |
+
+**Lighting Conditions** (pixel brightness):
+
+| Linguistic Term | Center | Spread | Width |
+|---|---|---|---|
+| night | 50 | 30 | 40 |
+| day | 180 | 50 | 70 |
+
+### Output Variables & Consequents
+
+**Steering Angle** (degrees):
+
+| Linguistic Term | Value |
+|---|---|
+| hard_right | 45 |
+| right | 25 |
+| straight | 0 |
+| left | -25 |
+| hard_left | -45 |
+
+**Speed Control** (percentage):
+
+| Linguistic Term | Value |
+|---|---|
+| stop | 0 |
+| slow | 30 |
+| medium | 60 |
+| fast | 100 |
+
+### Rule Base
+
+| # | Lane | Obstacle | Density | Lighting | Steering | Speed | Description |
+|---|---|---|---|---|---|---|---|
+| 1 | far_left | — | — | — | hard_right | medium | Far Left → Correct Hard Right |
+| 2 | left | — | — | — | right | medium | Left Drift → Steer Right |
+| 3 | center | — | — | — | straight | fast | Lane Center → Hold Straight |
+| 4 | right | — | — | — | left | medium | Right Drift → Steer Left |
+| 5 | far_right | — | — | — | hard_left | medium | Far Right → Correct Hard Left |
+| 6 | — | critical | — | — | — | stop | CRITICAL OBSTACLE → EMERGENCY BRAKE |
+| 7 | — | close | — | — | — | slow | Obstacle Ahead → Reduce Speed |
+| 8 | center | close | — | — | left | slow | Centered Obstacle Close → Evasive Steer Left |
+| 9 | — | medium | — | — | — | medium | Traffic Ahead → Cruising Speed |
+| 10 | — | far | — | — | — | fast | Path Clear → Full Speed |
+| 11 | — | — | high | — | — | slow | Dense Traffic → Cautious Speed |
+| 12 | — | — | — | night | — | medium | Night Time → Reduced Max Speed |
+| 13 | — | medium | high | night | — | slow | Night + Dense Traffic → Very Cautious |
+
+---
+
 ## Directory Structure
 
 ```text
