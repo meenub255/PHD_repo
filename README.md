@@ -21,12 +21,18 @@ The platform addresses perception and adaptive decision-making under uncertain e
    - Perspective transform (Bird's-Eye View) and lane curvature analysis
    - Vehicle offset calculation and trajectory prediction
 
+   ![Objective 2 Pipeline](docs/objective2.png)
+
 3. **Objective 3 — Unified Perception Intelligence Framework**:
    - Comprehensive situational awareness combining lane analysis, obstacle spatial tracking, and depth cues
    - Dynamic danger assessment and automated collision warning / emergency braking
 
+   ![Objective 3 Pipeline](docs/objective3.png)
+
 4. **Complete Workflow**:
    - End-to-end synchronized execution displaying live telemetry, fuzzy decision variables, and overlaid video streams
+
+   ![Complete Workflow](docs/complete_workflow.png)
 
 ---
 
